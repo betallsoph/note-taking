@@ -1,0 +1,361 @@
+import type { AuthUser } from './middleware/auth.js'
+import { MOCK_USER } from './middleware/auth.js'
+
+export type ArticleStatus = 'not_started' | 'learning' | 'completed' | 'need_review'
+export type Difficulty = 'easy' | 'medium' | 'hard'
+export type RoadmapItemStatus = 'not_started' | 'in_progress' | 'completed'
+export type MistakeType = 'wrong_answer' | 'tle' | 'mle' | 'logic_error'
+export type ReviewRating = 'again' | 'hard' | 'good' | 'easy'
+
+export interface Category {
+  id: string
+  userId: string
+  name: string
+  slug: string
+  description: string | null
+  icon: string | null
+  color: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Tag {
+  id: string
+  userId: string
+  name: string
+  slug: string
+  color: string | null
+  createdAt: string
+}
+
+export interface Article {
+  id: string
+  userId: string
+  categoryId: string | null
+  title: string
+  slug: string
+  content: Record<string, unknown>
+  excerpt: string | null
+  status: ArticleStatus
+  isArchived: boolean
+  tagIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Problem {
+  id: string
+  userId: string
+  title: string
+  slug: string
+  difficulty: Difficulty
+  description: string
+  constraints: string | null
+  examples: unknown[]
+  source: string | null
+  learningNotes: string | null
+  isSolved: boolean
+  tagIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Solution {
+  id: string
+  problemId: string
+  title: string
+  explanation: string | null
+  code: string
+  language: string
+  timeComplexity: string | null
+  spaceComplexity: string | null
+  notes: string | null
+  isOptimal: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Mistake {
+  id: string
+  problemId: string
+  type: MistakeType
+  description: string
+  lessonLearned: string | null
+  createdAt: string
+}
+
+export interface Flashcard {
+  id: string
+  userId: string
+  category: string
+  question: string
+  answer: string
+  difficulty: Difficulty
+  personalNotes: string | null
+  nextReviewAt: string | null
+  reviewIntervalDays: number
+  reviewCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Roadmap {
+  id: string
+  userId: string
+  title: string
+  slug: string
+  description: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RoadmapItem {
+  id: string
+  roadmapId: string
+  title: string
+  description: string | null
+  status: RoadmapItemStatus
+  orderIndex: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DashboardStats {
+  totalArticles: number
+  totalProblems: number
+  totalFlashcards: number
+  totalRoadmaps: number
+  topicsCompleted: number
+  learningStreak: number
+  reviewDueToday: number
+  recentlyUpdatedNotes: Article[]
+}
+
+function id() {
+  return crypto.randomUUID()
+}
+
+function now() {
+  return new Date().toISOString()
+}
+
+function slugify(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+class MockStore {
+  categories: Category[] = []
+  tags: Tag[] = []
+  articles: Article[] = []
+  problems: Problem[] = []
+  solutions: Solution[] = []
+  mistakes: Mistake[] = []
+  flashcards: Flashcard[] = []
+  roadmaps: Roadmap[] = []
+  roadmapItems: RoadmapItem[] = []
+
+  seed(user: AuthUser) {
+    if (this.categories.length > 0) return
+
+    const catData = [
+      { name: 'Data Structures', icon: 'TreeStructure', color: '#10b981' },
+      { name: 'Algorithms', icon: 'Graph', color: '#3b82f6' },
+      { name: 'Databases', icon: 'Database', color: '#f59e0b' },
+      { name: 'Operating Systems', icon: 'Desktop', color: '#8b5cf6' },
+      { name: 'System Design', icon: 'Cloud', color: '#ec4899' },
+    ]
+
+    this.categories = catData.map((c) => ({
+      id: id(),
+      userId: user.id,
+      name: c.name,
+      slug: slugify(c.name),
+      description: `Notes and resources for ${c.name}`,
+      icon: c.icon,
+      color: c.color,
+      createdAt: now(),
+      updatedAt: now(),
+    }))
+
+    const tagNames = ['Index', 'BTree', 'PostgreSQL', 'Hash Map', 'Dynamic Programming', 'Graph', 'Recursion']
+    this.tags = tagNames.map((name) => ({
+      id: id(),
+      userId: user.id,
+      name,
+      slug: slugify(name),
+      color: '#64748b',
+      createdAt: now(),
+    }))
+
+    const dbCat = this.categories.find((c) => c.slug === 'databases')!
+    this.articles = [
+      {
+        id: id(),
+        userId: user.id,
+        categoryId: dbCat.id,
+        title: 'B-Tree Index Internals',
+        slug: 'b-tree-index-internals',
+        content: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'B-Trees are self-balancing tree data structures...' }],
+            },
+          ],
+        },
+        excerpt: 'Understanding how B-Tree indexes work in PostgreSQL',
+        status: 'learning',
+        isArchived: false,
+        tagIds: [this.tags[0].id, this.tags[1].id, this.tags[2].id],
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        categoryId: this.categories.find((c) => c.slug === 'algorithms')!.id,
+        title: 'Dynamic Programming Patterns',
+        slug: 'dynamic-programming-patterns',
+        content: { type: 'doc', content: [] },
+        excerpt: 'Common DP patterns for interview prep',
+        status: 'completed',
+        isArchived: false,
+        tagIds: [this.tags[4].id],
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
+    this.problems = [
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Two Sum',
+        slug: 'two-sum',
+        difficulty: 'easy',
+        description: 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.',
+        constraints: '2 <= nums.length <= 10^4',
+        examples: [{ input: 'nums = [2,7,11,15], target = 9', output: '[0,1]' }],
+        source: 'LeetCode #1',
+        learningNotes: 'Hash map approach is O(n) time',
+        isSolved: true,
+        tagIds: [this.tags[3].id],
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Longest Increasing Subsequence',
+        slug: 'longest-increasing-subsequence',
+        difficulty: 'medium',
+        description: 'Given an integer array nums, return the length of the longest strictly increasing subsequence.',
+        constraints: '1 <= nums.length <= 2500',
+        examples: [{ input: 'nums = [10,9,2,5,3,7,101,18]', output: '4' }],
+        source: 'LeetCode #300',
+        learningNotes: null,
+        isSolved: false,
+        tagIds: [this.tags[4].id],
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
+    this.solutions = [
+      {
+        id: id(),
+        problemId: this.problems[0].id,
+        title: 'Hash Map',
+        explanation: 'Store complements in a hash map as we iterate',
+        code: 'function twoSum(nums: number[], target: number): number[] {\n  const map = new Map<number, number>();\n  for (let i = 0; i < nums.length; i++) {\n    const complement = target - nums[i];\n    if (map.has(complement)) return [map.get(complement)!, i];\n    map.set(nums[i], i);\n  }\n  return [];\n}',
+        language: 'typescript',
+        timeComplexity: 'O(n)',
+        spaceComplexity: 'O(n)',
+        notes: 'Single pass solution',
+        isOptimal: true,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
+    this.flashcards = [
+      {
+        id: id(),
+        userId: user.id,
+        category: 'DB',
+        question: 'What is MVCC?',
+        answer: 'Multi-Version Concurrency Control allows multiple transactions to read and write concurrently without blocking by maintaining multiple versions of data.',
+        difficulty: 'medium',
+        personalNotes: 'Used by PostgreSQL',
+        nextReviewAt: new Date().toISOString(),
+        reviewIntervalDays: 1,
+        reviewCount: 0,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        category: 'OS',
+        question: 'What is a deadlock?',
+        answer: 'A situation where two or more processes are blocked forever, each waiting for a resource held by another.',
+        difficulty: 'easy',
+        personalNotes: null,
+        nextReviewAt: new Date(Date.now() + 86400000).toISOString(),
+        reviewIntervalDays: 3,
+        reviewCount: 1,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
+    const roadmapId = id()
+    this.roadmaps = [
+      {
+        id: roadmapId,
+        userId: user.id,
+        title: 'Backend Roadmap',
+        slug: 'backend-roadmap',
+        description: 'Path to becoming a backend engineer',
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
+    this.roadmapItems = [
+      { id: id(), roadmapId, title: 'Learn HTTP & REST', description: null, status: 'completed', orderIndex: 0, createdAt: now(), updatedAt: now() },
+      { id: id(), roadmapId, title: 'Master SQL & PostgreSQL', description: null, status: 'in_progress', orderIndex: 1, createdAt: now(), updatedAt: now() },
+      { id: id(), roadmapId, title: 'System Design Fundamentals', description: null, status: 'not_started', orderIndex: 2, createdAt: now(), updatedAt: now() },
+    ]
+  }
+
+  getDashboardStats(userId: string): DashboardStats {
+    const userArticles = this.articles.filter((a) => a.userId === userId && !a.isArchived)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    return {
+      totalArticles: userArticles.length,
+      totalProblems: this.problems.filter((p) => p.userId === userId).length,
+      totalFlashcards: this.flashcards.filter((f) => f.userId === userId).length,
+      totalRoadmaps: this.roadmaps.filter((r) => r.userId === userId).length,
+      topicsCompleted: userArticles.filter((a) => a.status === 'completed').length,
+      learningStreak: 7,
+      reviewDueToday: this.flashcards.filter(
+        (f) => f.userId === userId && f.nextReviewAt && new Date(f.nextReviewAt) <= new Date(),
+      ).length,
+      recentlyUpdatedNotes: [...userArticles]
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 5),
+    }
+  }
+}
+
+export const mockStore = new MockStore()
+mockStore.seed(MOCK_USER)
+
+export { slugify, id, now }
