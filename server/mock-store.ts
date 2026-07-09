@@ -120,6 +120,27 @@ export interface RoadmapItem {
   updatedAt: string
 }
 
+export interface DevProject {
+  id: string
+  userId: string
+  name: string
+  slug: string
+  description: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DevAccount {
+  id: string
+  projectId: string
+  name: string
+  username: string
+  password: string
+  description: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface DashboardStats {
   totalArticles: number
   totalProblems: number
@@ -156,6 +177,8 @@ class MockStore {
   flashcards: Flashcard[] = []
   roadmaps: Roadmap[] = []
   roadmapItems: RoadmapItem[] = []
+  devProjects: DevProject[] = []
+  devAccounts: DevAccount[] = []
 
   seed(user: AuthUser) {
     if (this.categories.length > 0) return
@@ -330,6 +353,51 @@ class MockStore {
       { id: id(), roadmapId, title: 'Learn HTTP & REST', description: null, status: 'completed', orderIndex: 0, createdAt: now(), updatedAt: now() },
       { id: id(), roadmapId, title: 'Master SQL & PostgreSQL', description: null, status: 'in_progress', orderIndex: 1, createdAt: now(), updatedAt: now() },
       { id: id(), roadmapId, title: 'System Design Fundamentals', description: null, status: 'not_started', orderIndex: 2, createdAt: now(), updatedAt: now() },
+    ]
+
+    const projectId = id()
+    this.devProjects = [
+      {
+        id: projectId,
+        userId: user.id,
+        name: 'CS Hub Staging',
+        slug: 'cs-hub-staging',
+        description: 'Staging / QA accounts for the learning hub',
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        name: 'Side Project API',
+        slug: 'side-project-api',
+        description: 'Dev credentials for the side project backend',
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
+    this.devAccounts = [
+      {
+        id: id(),
+        projectId,
+        name: 'Admin',
+        username: 'admin@cshub.dev',
+        password: 'Admin@123',
+        description: 'Full access staging admin',
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        projectId,
+        name: 'QA Tester',
+        username: 'qa.tester',
+        password: 'QaTest!456',
+        description: 'Read/write QA account for manual testing',
+        createdAt: now(),
+        updatedAt: now(),
+      },
     ]
   }
 
