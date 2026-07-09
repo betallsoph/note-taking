@@ -111,6 +111,39 @@ export const api = {
     deleteItem: (roadmapId: string, itemId: string) =>
       request<void>(`/roadmaps/${roadmapId}/items/${itemId}`, { method: 'DELETE' }),
   },
+  devAccounts: {
+    listProjects: () => request<import('@/types').DevProject[]>('/dev-accounts/projects'),
+    createProject: (data: Partial<import('@/types').DevProject>) =>
+      request<import('@/types').DevProject>('/dev-accounts/projects', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    updateProject: (id: string, data: Partial<import('@/types').DevProject>) =>
+      request<import('@/types').DevProject>(`/dev-accounts/projects/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    deleteProject: (id: string) =>
+      request<void>(`/dev-accounts/projects/${id}`, { method: 'DELETE' }),
+    createAccount: (projectId: string, data: Partial<import('@/types').DevAccount>) =>
+      request<import('@/types').DevAccount>(`/dev-accounts/projects/${projectId}/accounts`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    updateAccount: (
+      projectId: string,
+      accountId: string,
+      data: Partial<import('@/types').DevAccount>,
+    ) =>
+      request<import('@/types').DevAccount>(
+        `/dev-accounts/projects/${projectId}/accounts/${accountId}`,
+        { method: 'PUT', body: JSON.stringify(data) },
+      ),
+    deleteAccount: (projectId: string, accountId: string) =>
+      request<void>(`/dev-accounts/projects/${projectId}/accounts/${accountId}`, {
+        method: 'DELETE',
+      }),
+  },
   simulations: {
     types: () => request<{ dataStructures: string[]; sorting: string[]; graph: string[]; tree: string[] }>(
       '/simulations/types',

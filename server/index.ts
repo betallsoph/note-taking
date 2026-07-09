@@ -10,6 +10,7 @@ import problemsRouter from './routes/problems.js'
 import flashcardsRouter from './routes/flashcards.js'
 import roadmapsRouter from './routes/roadmaps.js'
 import simulationsRouter from './routes/simulations.js'
+import devAccountsRouter from './routes/dev-accounts.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 3001
@@ -37,6 +38,7 @@ app.use('/api/problems', problemsRouter)
 app.use('/api/flashcards', flashcardsRouter)
 app.use('/api/roadmaps', roadmapsRouter)
 app.use('/api/simulations', simulationsRouter)
+app.use('/api/dev-accounts', devAccountsRouter)
 
 app.listen(PORT, () => {
   console.log(`API server running on http://localhost:${PORT}`)

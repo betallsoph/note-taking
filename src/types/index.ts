@@ -129,6 +129,28 @@ export interface Roadmap {
   items?: RoadmapItem[]
 }
 
+export interface DevAccount {
+  id: string
+  projectId: string
+  name: string
+  username: string
+  password: string
+  description: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DevProject {
+  id: string
+  userId: string
+  name: string
+  slug: string
+  description: string | null
+  createdAt: string
+  updatedAt: string
+  accounts?: DevAccount[]
+}
+
 export interface DashboardStats {
   totalArticles: number
   totalProblems: number

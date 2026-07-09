@@ -10,6 +10,7 @@ import { FlashcardsPage } from '@/features/flashcards/FlashcardsPage'
 import { RoadmapsPage } from '@/features/roadmaps/RoadmapsPage'
 import { ReviewsPage } from '@/features/reviews/ReviewsPage'
 import { InterviewHubPage } from '@/features/interview/InterviewHubPage'
+import { DevAccountsPage } from '@/features/dev-accounts/DevAccountsPage'
 
 export const router = createBrowserRouter([
   {
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
       { path: 'roadmaps', element: <RoadmapsPage /> },
       { path: 'reviews', element: <ReviewsPage /> },
       { path: 'interview', element: <InterviewHubPage /> },
+      { path: 'dev-accounts', element: <DevAccountsPage /> },
     ],
   },
 ])

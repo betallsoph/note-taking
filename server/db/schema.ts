@@ -271,6 +271,39 @@ export const simulations = pgTable('simulations', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const devProjects = pgTable(
+  'dev_projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('dev_projects_user_id_idx').on(table.userId)],
+)
+
+export const devAccounts = pgTable(
+  'dev_accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => devProjects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    username: text('username').notNull(),
+    password: text('password').notNull(),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('dev_accounts_project_id_idx').on(table.projectId)],
+)
+
 export const simulationSteps = pgTable('simulation_steps', {
   id: uuid('id').primaryKey().defaultRandom(),
   simulationId: uuid('simulation_id')
@@ -291,6 +324,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   roadmaps: many(roadmaps),
   reviews: many(reviews),
   simulations: many(simulations),
+  devProjects: many(devProjects),
 }))
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
@@ -363,5 +397,17 @@ export const simulationStepsRelations = relations(simulationSteps, ({ one }) => 
   simulation: one(simulations, {
     fields: [simulationSteps.simulationId],
     references: [simulations.id],
+  }),
+}))
+
+export const devProjectsRelations = relations(devProjects, ({ one, many }) => ({
+  user: one(users, { fields: [devProjects.userId], references: [users.id] }),
+  accounts: many(devAccounts),
+}))
+
+export const devAccountsRelations = relations(devAccounts, ({ one }) => ({
+  project: one(devProjects, {
+    fields: [devAccounts.projectId],
+    references: [devProjects.id],
   }),
 }))

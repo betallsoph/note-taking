@@ -8,6 +8,7 @@ import {
   MapTrifold,
   ArrowsClockwise,
   MicrophoneStage,
+  Key,
   SidebarSimple,
   Moon,
   Sun,
@@ -25,6 +26,7 @@ const navItems = [
   { to: '/flashcards', label: 'Flashcards', icon: Cards },
   { to: '/reviews', label: 'Reviews', icon: ArrowsClockwise },
   { to: '/interview', label: 'Interview Hub', icon: MicrophoneStage },
+  { to: '/dev-accounts', label: 'Dev Accounts', icon: Key },
 ]
 
 export function Sidebar() {

@@ -108,6 +108,30 @@ async function seed() {
     { roadmapId: roadmap.id, title: 'System Design Fundamentals', status: 'not_started', orderIndex: 2 },
   ])
 
+  const [devProject] = await db.insert(schema.devProjects).values({
+    userId: MOCK_USER_ID,
+    name: 'CS Hub Staging',
+    slug: 'cs-hub-staging',
+    description: 'Staging / QA accounts for the learning hub',
+  }).returning()
+
+  await db.insert(schema.devAccounts).values([
+    {
+      projectId: devProject.id,
+      name: 'Admin',
+      username: 'admin@cshub.dev',
+      password: 'Admin@123',
+      description: 'Full access staging admin',
+    },
+    {
+      projectId: devProject.id,
+      name: 'QA Tester',
+      username: 'qa.tester',
+      password: 'QaTest!456',
+      description: 'Read/write QA account for manual testing',
+    },
+  ])
+
   console.log('Seed complete!')
   await client.end()
 }
