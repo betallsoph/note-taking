@@ -52,9 +52,11 @@ export function DevAccountsPage() {
 
   const createProjectMutation = useMutation({
     mutationFn: api.devAccounts.createProject,
-    onSuccess: () => {
+    onSuccess: (project) => {
       invalidate()
       closeProjectDialog()
+      // After creating a project, open the 4-field account form right away.
+      openCreateAccount(project.id)
     },
   })
 
@@ -368,6 +370,11 @@ export function DevAccountsPage() {
             <DialogTitle>{editingProject ? 'Edit Project' : 'New Project'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={submitProject} className="space-y-4">
+            {!editingProject && (
+              <p className="text-sm text-muted-foreground">
+                Bước 1/2 — tạo project. Sau đó sẽ mở form thêm account (tên, mail/username, password, mô tả).
+              </p>
+            )}
             <Input
               placeholder="Tên project"
               value={projectForm.name}
@@ -375,7 +382,7 @@ export function DevAccountsPage() {
               required
             />
             <Textarea
-              placeholder="Mô tả (optional)"
+              placeholder="Mô tả project (optional)"
               value={projectForm.description}
               onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
             />
@@ -384,7 +391,7 @@ export function DevAccountsPage() {
               className="w-full"
               disabled={createProjectMutation.isPending || updateProjectMutation.isPending}
             >
-              {editingProject ? 'Save' : 'Create'}
+              {editingProject ? 'Save' : 'Create & add account'}
             </Button>
           </form>
         </DialogContent>
