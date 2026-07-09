@@ -16,11 +16,13 @@ import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { DevAccount, DevProject } from '@/types'
 
 type ProjectForm = { name: string; description: string }
 type AccountForm = { name: string; username: string; password: string; description: string }
 
+const NEW_PROJECT_VALUE = '__new__'
 const emptyProject: ProjectForm = { name: '', description: '' }
 const emptyAccount: AccountForm = { name: '', username: '', password: '', description: '' }
 
@@ -34,14 +36,15 @@ async function copyText(value: string) {
 
 export function DevAccountsPage() {
   const queryClient = useQueryClient()
-  const [projectOpen, setProjectOpen] = useState(false)
-  const [accountOpen, setAccountOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editProjectOpen, setEditProjectOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<DevProject | null>(null)
   const [editingAccount, setEditingAccount] = useState<DevAccount | null>(null)
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  const [projectChoice, setProjectChoice] = useState<string>(NEW_PROJECT_VALUE)
   const [projectForm, setProjectForm] = useState<ProjectForm>(emptyProject)
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccount)
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({})
+  const [submitting, setSubmitting] = useState(false)
 
   const { data: projects, isLoading } = useQuery({
     queryKey: ['dev-accounts'],
@@ -50,35 +53,18 @@ export function DevAccountsPage() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dev-accounts'] })
 
-  const createProjectMutation = useMutation({
-    mutationFn: api.devAccounts.createProject,
-    onSuccess: () => {
-      invalidate()
-      closeProjectDialog()
-    },
-  })
-
   const updateProjectMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<DevProject> }) =>
       api.devAccounts.updateProject(id, data),
     onSuccess: () => {
       invalidate()
-      closeProjectDialog()
+      closeEditProjectDialog()
     },
   })
 
   const deleteProjectMutation = useMutation({
     mutationFn: api.devAccounts.deleteProject,
     onSuccess: invalidate,
-  })
-
-  const createAccountMutation = useMutation({
-    mutationFn: ({ projectId, data }: { projectId: string; data: Partial<DevAccount> }) =>
-      api.devAccounts.createAccount(projectId, data),
-    onSuccess: () => {
-      invalidate()
-      closeAccountDialog()
-    },
   })
 
   const updateAccountMutation = useMutation({
@@ -93,7 +79,7 @@ export function DevAccountsPage() {
     }) => api.devAccounts.updateAccount(projectId, accountId, data),
     onSuccess: () => {
       invalidate()
-      closeAccountDialog()
+      closeFormDialog()
     },
   })
 
@@ -103,23 +89,50 @@ export function DevAccountsPage() {
     onSuccess: invalidate,
   })
 
-  function closeProjectDialog() {
-    setProjectOpen(false)
-    setEditingProject(null)
-    setProjectForm(emptyProject)
-  }
+  const creatingNewProject = !editingAccount && projectChoice === NEW_PROJECT_VALUE
 
-  function closeAccountDialog() {
-    setAccountOpen(false)
+  function closeFormDialog() {
+    setFormOpen(false)
     setEditingAccount(null)
-    setActiveProjectId(null)
+    setProjectChoice(NEW_PROJECT_VALUE)
+    setProjectForm(emptyProject)
     setAccountForm(emptyAccount)
+    setSubmitting(false)
   }
 
-  function openCreateProject() {
+  function closeEditProjectDialog() {
+    setEditProjectOpen(false)
     setEditingProject(null)
     setProjectForm(emptyProject)
-    setProjectOpen(true)
+  }
+
+  function openAddForm(preferredProjectId?: string) {
+    setEditingAccount(null)
+    setAccountForm(emptyAccount)
+    setProjectForm(emptyProject)
+
+    if (preferredProjectId) {
+      setProjectChoice(preferredProjectId)
+    } else if (projects && projects.length > 0) {
+      setProjectChoice(projects[0].id)
+    } else {
+      setProjectChoice(NEW_PROJECT_VALUE)
+    }
+
+    setFormOpen(true)
+  }
+
+  function openEditAccount(projectId: string, account: DevAccount) {
+    setEditingAccount(account)
+    setProjectChoice(projectId)
+    setProjectForm(emptyProject)
+    setAccountForm({
+      name: account.name,
+      username: account.username,
+      password: account.password,
+      description: account.description ?? '',
+    })
+    setFormOpen(true)
   }
 
   function openEditProject(project: DevProject) {
@@ -128,58 +141,60 @@ export function DevAccountsPage() {
       name: project.name,
       description: project.description ?? '',
     })
-    setProjectOpen(true)
+    setEditProjectOpen(true)
   }
 
-  function openCreateAccount(projectId: string) {
-    setActiveProjectId(projectId)
-    setEditingAccount(null)
-    setAccountForm(emptyAccount)
-    setAccountOpen(true)
-  }
-
-  function openEditAccount(projectId: string, account: DevAccount) {
-    setActiveProjectId(projectId)
-    setEditingAccount(account)
-    setAccountForm({
-      name: account.name,
-      username: account.username,
-      password: account.password,
-      description: account.description ?? '',
+  function submitEditProject(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingProject) return
+    updateProjectMutation.mutate({
+      id: editingProject.id,
+      data: {
+        name: projectForm.name.trim(),
+        description: projectForm.description.trim() || null,
+      },
     })
-    setAccountOpen(true)
   }
 
-  function submitProject(e: React.FormEvent) {
+  async function submitForm(e: React.FormEvent) {
     e.preventDefault()
-    const payload = {
-      name: projectForm.name.trim(),
-      description: projectForm.description.trim() || null,
-    }
-    if (editingProject) {
-      updateProjectMutation.mutate({ id: editingProject.id, data: payload })
-    } else {
-      createProjectMutation.mutate(payload)
-    }
-  }
-
-  function submitAccount(e: React.FormEvent) {
-    e.preventDefault()
-    if (!activeProjectId) return
-    const payload = {
+    const accountPayload = {
       name: accountForm.name.trim(),
       username: accountForm.username.trim(),
       password: accountForm.password,
       description: accountForm.description.trim() || null,
     }
+
     if (editingAccount) {
       updateAccountMutation.mutate({
-        projectId: activeProjectId,
+        projectId: projectChoice,
         accountId: editingAccount.id,
-        data: payload,
+        data: accountPayload,
       })
-    } else {
-      createAccountMutation.mutate({ projectId: activeProjectId, data: payload })
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      let projectId = projectChoice
+      if (creatingNewProject) {
+        const name = projectForm.name.trim()
+        if (!name) {
+          setSubmitting(false)
+          return
+        }
+        const project = await api.devAccounts.createProject({
+          name,
+          description: projectForm.description.trim() || null,
+        })
+        projectId = project.id
+      }
+
+      await api.devAccounts.createAccount(projectId, accountPayload)
+      await invalidate()
+      closeFormDialog()
+    } catch {
+      setSubmitting(false)
     }
   }
 
@@ -187,14 +202,16 @@ export function DevAccountsPage() {
     setVisiblePasswords((prev) => ({ ...prev, [accountId]: !prev[accountId] }))
   }
 
+  const formBusy = submitting || updateAccountMutation.isPending
+
   return (
     <div>
       <PageHeader
         title="Dev Accounts"
         description="Lưu account theo từng project — tên, mail/username, password, mô tả"
         actions={
-          <Button onClick={openCreateProject}>
-            <Plus className="h-4 w-4" /> New Project
+          <Button onClick={() => openAddForm()}>
+            <Plus className="h-4 w-4" /> New Account
           </Button>
         }
       />
@@ -203,9 +220,9 @@ export function DevAccountsPage() {
         <Skeleton className="h-64" />
       ) : projects?.length === 0 ? (
         <EmptyState
-          title="Chưa có project nào"
-          description="Tạo project rồi thêm các dev account bên dưới."
-          action={<Button onClick={openCreateProject}>Create Project</Button>}
+          title="Chưa có account nào"
+          description="Thêm account — có thể tạo project mới ngay trong form."
+          action={<Button onClick={() => openAddForm()}>Add Account</Button>}
         />
       ) : (
         <div className="space-y-6">
@@ -226,7 +243,7 @@ export function DevAccountsPage() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button variant="outline" size="sm" onClick={() => openCreateAccount(project.id)}>
+                  <Button variant="outline" size="sm" onClick={() => openAddForm(project.id)}>
                     <Plus className="h-4 w-4" /> Account
                   </Button>
                   <Button variant="ghost" size="icon" onClick={() => openEditProject(project)}>
@@ -255,10 +272,7 @@ export function DevAccountsPage() {
                     {project.accounts?.map((account) => {
                       const showPassword = visiblePasswords[account.id]
                       return (
-                        <div
-                          key={account.id}
-                          className="rounded-md border px-4 py-3"
-                        >
+                        <div key={account.id} className="rounded-md border px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 space-y-1">
                               <div className="flex items-center gap-2">
@@ -357,17 +371,100 @@ export function DevAccountsPage() {
       )}
 
       <Dialog
-        open={projectOpen}
+        open={formOpen}
         onOpenChange={(open) => {
-          if (!open) closeProjectDialog()
-          else setProjectOpen(true)
+          if (!open) closeFormDialog()
+          else setFormOpen(true)
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingProject ? 'Edit Project' : 'New Project'}</DialogTitle>
+            <DialogTitle>{editingAccount ? 'Edit Account' : 'New Account'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={submitProject} className="space-y-4">
+          <form onSubmit={submitForm} className="space-y-4">
+            {!editingAccount && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Project</label>
+                  <Select value={projectChoice} onValueChange={setProjectChoice}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(projects ?? []).map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value={NEW_PROJECT_VALUE}>+ Tạo project mới</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {creatingNewProject && (
+                  <div className="space-y-3 rounded-md border border-dashed p-3">
+                    <Input
+                      placeholder="Tên project mới"
+                      value={projectForm.name}
+                      onChange={(e) => setProjectForm((f) => ({ ...f, name: e.target.value }))}
+                      required
+                    />
+                    <Textarea
+                      placeholder="Mô tả project (optional)"
+                      value={projectForm.description}
+                      onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {!editingAccount && <p className="text-sm font-medium">Account</p>}
+              <Input
+                placeholder="Tên (vd: Admin, QA Tester)"
+                value={accountForm.name}
+                onChange={(e) => setAccountForm((f) => ({ ...f, name: e.target.value }))}
+                required
+              />
+              <Input
+                placeholder="Mail / username"
+                value={accountForm.username}
+                onChange={(e) => setAccountForm((f) => ({ ...f, username: e.target.value }))}
+                required
+              />
+              <Input
+                placeholder="Password"
+                value={accountForm.password}
+                onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
+                required
+              />
+              <Textarea
+                placeholder="Mô tả (optional)"
+                value={accountForm.description}
+                onChange={(e) => setAccountForm((f) => ({ ...f, description: e.target.value }))}
+              />
+            </div>
+
+            <Button type="submit" className="w-full" disabled={formBusy}>
+              {editingAccount ? 'Save' : creatingNewProject ? 'Create project & account' : 'Create account'}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editProjectOpen}
+        onOpenChange={(open) => {
+          if (!open) closeEditProjectDialog()
+          else setEditProjectOpen(true)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Project</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitEditProject} className="space-y-4">
             <Input
               placeholder="Tên project"
               value={projectForm.name}
@@ -375,62 +472,12 @@ export function DevAccountsPage() {
               required
             />
             <Textarea
-              placeholder="Mô tả (optional)"
+              placeholder="Mô tả project (optional)"
               value={projectForm.description}
               onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
             />
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={createProjectMutation.isPending || updateProjectMutation.isPending}
-            >
-              {editingProject ? 'Save' : 'Create'}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={accountOpen}
-        onOpenChange={(open) => {
-          if (!open) closeAccountDialog()
-          else setAccountOpen(true)
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingAccount ? 'Edit Account' : 'New Account'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={submitAccount} className="space-y-4">
-            <Input
-              placeholder="Tên (vd: Admin, QA Tester)"
-              value={accountForm.name}
-              onChange={(e) => setAccountForm((f) => ({ ...f, name: e.target.value }))}
-              required
-            />
-            <Input
-              placeholder="Mail / username"
-              value={accountForm.username}
-              onChange={(e) => setAccountForm((f) => ({ ...f, username: e.target.value }))}
-              required
-            />
-            <Input
-              placeholder="Password"
-              value={accountForm.password}
-              onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
-              required
-            />
-            <Textarea
-              placeholder="Mô tả (optional)"
-              value={accountForm.description}
-              onChange={(e) => setAccountForm((f) => ({ ...f, description: e.target.value }))}
-            />
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={createAccountMutation.isPending || updateAccountMutation.isPending}
-            >
-              {editingAccount ? 'Save' : 'Create'}
+            <Button type="submit" className="w-full" disabled={updateProjectMutation.isPending}>
+              Save
             </Button>
           </form>
         </DialogContent>
