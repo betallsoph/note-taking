@@ -1,13 +1,44 @@
 const BASE = '/api'
+const ACCESS_TOKEN_STORAGE_KEY = 'cs-hub-access-token'
+
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+export function setAccessToken(token: string) {
+  localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token)
+}
+
+export function clearAccessToken() {
+  localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
+}
+
+function getAccessToken() {
+  return localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers)
+  headers.set('Content-Type', 'application/json')
+
+  const accessToken = getAccessToken()
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`)
+  }
+
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
+    headers,
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(err.error ?? 'Request failed')
+    throw new ApiError(err.error ?? 'Request failed', res.status)
   }
   if (res.status === 204) return undefined as T
   return res.json()
