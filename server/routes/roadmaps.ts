@@ -1,10 +1,25 @@
 import { Router } from 'express'
 import { mockStore, id, now, slugify } from '../mock-store.js'
 import type { RoadmapItemStatus } from '../mock-store.js'
+import {
+  addRoadmapItem,
+  createRoadmap,
+  deleteRoadmap,
+  deleteRoadmapItem,
+  getRoadmap,
+  isDatabaseEnabled,
+  listRoadmaps,
+  updateRoadmap,
+  updateRoadmapItem,
+} from '../db/repositories.js'
 
 const router = Router()
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    return res.json(await listRoadmaps(req.user.id))
+  }
+
   const roadmaps = mockStore.roadmaps.filter((r) => r.userId === req.user.id)
   const withItems = roadmaps.map((r) => ({
     ...r,
@@ -15,8 +30,14 @@ router.get('/', (req, res) => {
   res.json(withItems)
 })
 
-router.get('/:id', (req, res) => {
-  const roadmap = mockStore.roadmaps.find((r) => r.id === req.params.id)
+router.get('/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const roadmap = await getRoadmap(req.user.id, req.params.id)
+    if (!roadmap) return res.status(404).json({ error: 'Not found' })
+    return res.json(roadmap)
+  }
+
+  const roadmap = mockStore.roadmaps.find((r) => r.id === req.params.id && r.userId === req.user.id)
   if (!roadmap) return res.status(404).json({ error: 'Not found' })
   const items = mockStore.roadmapItems
     .filter((i) => i.roadmapId === roadmap.id)
@@ -24,7 +45,12 @@ router.get('/:id', (req, res) => {
   res.json({ ...roadmap, items })
 })
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const roadmap = await createRoadmap(req.user.id, req.body)
+    return res.status(201).json(roadmap)
+  }
+
   const { title, description } = req.body
   const roadmap = {
     id: id(),
@@ -39,23 +65,41 @@ router.post('/', (req, res) => {
   res.status(201).json(roadmap)
 })
 
-router.put('/:id', (req, res) => {
-  const idx = mockStore.roadmaps.findIndex((r) => r.id === req.params.id)
+router.put('/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const roadmap = await updateRoadmap(req.user.id, req.params.id, req.body)
+    if (!roadmap) return res.status(404).json({ error: 'Not found' })
+    return res.json(roadmap)
+  }
+
+  const idx = mockStore.roadmaps.findIndex((r) => r.id === req.params.id && r.userId === req.user.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
   mockStore.roadmaps[idx] = { ...mockStore.roadmaps[idx], ...req.body, updatedAt: now() }
   res.json(mockStore.roadmaps[idx])
 })
 
-router.delete('/:id', (req, res) => {
-  const idx = mockStore.roadmaps.findIndex((r) => r.id === req.params.id)
+router.delete('/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const deleted = await deleteRoadmap(req.user.id, req.params.id)
+    if (!deleted) return res.status(404).json({ error: 'Not found' })
+    return res.status(204).send()
+  }
+
+  const idx = mockStore.roadmaps.findIndex((r) => r.id === req.params.id && r.userId === req.user.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
   mockStore.roadmapItems = mockStore.roadmapItems.filter((i) => i.roadmapId !== req.params.id)
   mockStore.roadmaps.splice(idx, 1)
   res.status(204).send()
 })
 
-router.post('/:id/items', (req, res) => {
-  const roadmap = mockStore.roadmaps.find((r) => r.id === req.params.id)
+router.post('/:id/items', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const item = await addRoadmapItem(req.user.id, req.params.id, req.body)
+    if (!item) return res.status(404).json({ error: 'Not found' })
+    return res.status(201).json(item)
+  }
+
+  const roadmap = mockStore.roadmaps.find((r) => r.id === req.params.id && r.userId === req.user.id)
   if (!roadmap) return res.status(404).json({ error: 'Not found' })
   const existing = mockStore.roadmapItems.filter((i) => i.roadmapId === roadmap.id)
   const item = {
@@ -72,7 +116,15 @@ router.post('/:id/items', (req, res) => {
   res.status(201).json(item)
 })
 
-router.put('/:roadmapId/items/:itemId', (req, res) => {
+router.put('/:roadmapId/items/:itemId', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const item = await updateRoadmapItem(req.user.id, req.params.roadmapId, req.params.itemId, req.body)
+    if (!item) return res.status(404).json({ error: 'Not found' })
+    return res.json(item)
+  }
+
+  const roadmap = mockStore.roadmaps.find((r) => r.id === req.params.roadmapId && r.userId === req.user.id)
+  if (!roadmap) return res.status(404).json({ error: 'Not found' })
   const idx = mockStore.roadmapItems.findIndex(
     (i) => i.id === req.params.itemId && i.roadmapId === req.params.roadmapId,
   )
@@ -85,7 +137,15 @@ router.put('/:roadmapId/items/:itemId', (req, res) => {
   res.json(mockStore.roadmapItems[idx])
 })
 
-router.delete('/:roadmapId/items/:itemId', (req, res) => {
+router.delete('/:roadmapId/items/:itemId', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const deleted = await deleteRoadmapItem(req.user.id, req.params.roadmapId, req.params.itemId)
+    if (!deleted) return res.status(404).json({ error: 'Not found' })
+    return res.status(204).send()
+  }
+
+  const roadmap = mockStore.roadmaps.find((r) => r.id === req.params.roadmapId && r.userId === req.user.id)
+  if (!roadmap) return res.status(404).json({ error: 'Not found' })
   const idx = mockStore.roadmapItems.findIndex(
     (i) => i.id === req.params.itemId && i.roadmapId === req.params.roadmapId,
   )

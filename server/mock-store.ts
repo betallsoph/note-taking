@@ -6,6 +6,15 @@ export type Difficulty = 'easy' | 'medium' | 'hard'
 export type RoadmapItemStatus = 'not_started' | 'in_progress' | 'completed'
 export type MistakeType = 'wrong_answer' | 'tle' | 'mle' | 'logic_error'
 export type ReviewRating = 'again' | 'hard' | 'good' | 'easy'
+export type DevCredentialKind =
+  | 'login'
+  | 'api_key'
+  | 'database'
+  | 'connection_string'
+  | 'oauth_client'
+  | 'webhook_secret'
+  | 'ssh_key'
+  | 'env_var'
 
 export interface Category {
   id: string
@@ -133,9 +142,13 @@ export interface DevProject {
 export interface DevAccount {
   id: string
   projectId: string
+  kind: DevCredentialKind
+  provider: string | null
+  environment: string
   name: string
   username: string
   password: string
+  url: string | null
   description: string | null
   createdAt: string
   updatedAt: string
@@ -187,6 +200,12 @@ class MockStore {
       { name: 'Data Structures', icon: 'TreeStructure', color: '#10b981' },
       { name: 'Algorithms', icon: 'Graph', color: '#3b82f6' },
       { name: 'Databases', icon: 'Database', color: '#f59e0b' },
+      { name: 'Backend', icon: 'Code', color: '#06b6d4' },
+      { name: 'Frontend', icon: 'Browsers', color: '#ec4899' },
+      { name: 'Mobile', icon: 'DeviceMobile', color: '#22c55e' },
+      { name: 'Infra', icon: 'Cloud', color: '#6366f1' },
+      { name: 'DevOps', icon: 'GitBranch', color: '#f97316' },
+      { name: 'Security', icon: 'ShieldCheck', color: '#ef4444' },
       { name: 'Operating Systems', icon: 'Desktop', color: '#8b5cf6' },
       { name: 'System Design', icon: 'Cloud', color: '#ec4899' },
     ]
@@ -203,7 +222,23 @@ class MockStore {
       updatedAt: now(),
     }))
 
-    const tagNames = ['Index', 'BTree', 'PostgreSQL', 'Hash Map', 'Dynamic Programming', 'Graph', 'Recursion']
+    const tagNames = [
+      'Index',
+      'BTree',
+      'PostgreSQL',
+      'Hash Map',
+      'Dynamic Programming',
+      'Graph',
+      'Recursion',
+      'Docker',
+      'Kubernetes',
+      'CI/CD',
+      'Flutter',
+      'React Native',
+      'AWS',
+      'Neon',
+      'MongoDB Atlas',
+    ]
     this.tags = tagNames.map((name) => ({
       id: id(),
       userId: user.id,
@@ -381,9 +416,13 @@ class MockStore {
       {
         id: id(),
         projectId,
+        kind: 'login',
+        provider: 'CS Hub',
+        environment: 'staging',
         name: 'Admin',
         username: 'admin@cshub.dev',
         password: 'Admin@123',
+        url: null,
         description: 'Full access staging admin',
         createdAt: now(),
         updatedAt: now(),
@@ -391,10 +430,28 @@ class MockStore {
       {
         id: id(),
         projectId,
+        kind: 'login',
+        provider: 'CS Hub',
+        environment: 'staging',
         name: 'QA Tester',
         username: 'qa.tester',
         password: 'QaTest!456',
+        url: null,
         description: 'Read/write QA account for manual testing',
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        projectId,
+        kind: 'database',
+        provider: 'MongoDB Atlas',
+        environment: 'dev',
+        name: 'Atlas Database User',
+        username: 'hugoddt123450_db_user',
+        password: 'example-secret',
+        url: 'https://cloud.mongodb.com',
+        description: 'Store generated DB users and connection notes here instead of screenshots.',
         createdAt: now(),
         updatedAt: now(),
       },

@@ -294,9 +294,13 @@ export const devAccounts = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => devProjects.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull().default('login'),
+    provider: text('provider'),
+    environment: text('environment').notNull().default('dev'),
     name: text('name').notNull(),
     username: text('username').notNull(),
     password: text('password').notNull(),
+    url: text('url'),
     description: text('description'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

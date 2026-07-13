@@ -1,9 +1,23 @@
 import { Router } from 'express'
 import { mockStore, id, now, slugify } from '../mock-store.js'
+import {
+  createDevAccount,
+  createDevProject,
+  deleteDevAccount,
+  deleteDevProject,
+  isDatabaseEnabled,
+  listDevProjects,
+  updateDevAccount,
+  updateDevProject,
+} from '../db/repositories.js'
 
 const router = Router()
 
-router.get('/projects', (req, res) => {
+router.get('/projects', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    return res.json(await listDevProjects(req.user.id))
+  }
+
   const projects = mockStore.devProjects
     .filter((p) => p.userId === req.user.id)
     .map((p) => ({
@@ -15,11 +29,17 @@ router.get('/projects', (req, res) => {
   res.json(projects)
 })
 
-router.post('/projects', (req, res) => {
+router.post('/projects', async (req, res) => {
   const { name, description } = req.body
   if (!name?.trim()) {
     return res.status(400).json({ error: 'Project name is required' })
   }
+
+  if (isDatabaseEnabled()) {
+    const project = await createDevProject(req.user.id, req.body)
+    return res.status(201).json(project)
+  }
+
   const project = {
     id: id(),
     userId: req.user.id,
@@ -33,7 +53,13 @@ router.post('/projects', (req, res) => {
   res.status(201).json({ ...project, accounts: [] })
 })
 
-router.put('/projects/:id', (req, res) => {
+router.put('/projects/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const project = await updateDevProject(req.user.id, req.params.id, req.body)
+    if (!project) return res.status(404).json({ error: 'Not found' })
+    return res.json(project)
+  }
+
   const idx = mockStore.devProjects.findIndex(
     (p) => p.id === req.params.id && p.userId === req.user.id,
   )
@@ -56,7 +82,13 @@ router.put('/projects/:id', (req, res) => {
   res.json(mockStore.devProjects[idx])
 })
 
-router.delete('/projects/:id', (req, res) => {
+router.delete('/projects/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const deleted = await deleteDevProject(req.user.id, req.params.id)
+    if (!deleted) return res.status(404).json({ error: 'Not found' })
+    return res.status(204).send()
+  }
+
   const idx = mockStore.devProjects.findIndex(
     (p) => p.id === req.params.id && p.userId === req.user.id,
   )
@@ -66,23 +98,34 @@ router.delete('/projects/:id', (req, res) => {
   res.status(204).send()
 })
 
-router.post('/projects/:id/accounts', (req, res) => {
+router.post('/projects/:id/accounts', async (req, res) => {
   const project = mockStore.devProjects.find(
     (p) => p.id === req.params.id && p.userId === req.user.id,
   )
-  if (!project) return res.status(404).json({ error: 'Not found' })
 
-  const { name, username, password, description } = req.body
+  const { kind, provider, environment, name, username, password, url, description } = req.body
   if (!name?.trim() || !username?.trim() || !password?.trim()) {
-    return res.status(400).json({ error: 'Name, username, and password are required' })
+    return res.status(400).json({ error: 'Name, identifier, and secret are required' })
   }
+
+  if (isDatabaseEnabled()) {
+    const account = await createDevAccount(req.user.id, req.params.id, req.body)
+    if (!account) return res.status(404).json({ error: 'Not found' })
+    return res.status(201).json(account)
+  }
+
+  if (!project) return res.status(404).json({ error: 'Not found' })
 
   const account = {
     id: id(),
     projectId: project.id,
+    kind: kind ?? 'login',
+    provider: provider?.trim() ? provider.trim() : null,
+    environment: environment?.trim() ? environment.trim() : 'dev',
     name: name.trim(),
     username: username.trim(),
     password: String(password),
+    url: url?.trim() ? url.trim() : null,
     description: description?.trim() ? description.trim() : null,
     createdAt: now(),
     updatedAt: now(),
@@ -91,7 +134,13 @@ router.post('/projects/:id/accounts', (req, res) => {
   res.status(201).json(account)
 })
 
-router.put('/projects/:projectId/accounts/:accountId', (req, res) => {
+router.put('/projects/:projectId/accounts/:accountId', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const account = await updateDevAccount(req.user.id, req.params.projectId, req.params.accountId, req.body)
+    if (!account) return res.status(404).json({ error: 'Not found' })
+    return res.json(account)
+  }
+
   const project = mockStore.devProjects.find(
     (p) => p.id === req.params.projectId && p.userId === req.user.id,
   )
@@ -105,9 +154,23 @@ router.put('/projects/:projectId/accounts/:accountId', (req, res) => {
   const current = mockStore.devAccounts[idx]
   mockStore.devAccounts[idx] = {
     ...current,
+    kind: req.body.kind ?? current.kind,
+    provider:
+      req.body.provider !== undefined
+        ? req.body.provider?.trim()
+          ? req.body.provider.trim()
+          : null
+        : current.provider,
+    environment: req.body.environment?.trim() ?? current.environment,
     name: req.body.name?.trim() ?? current.name,
     username: req.body.username?.trim() ?? current.username,
     password: req.body.password !== undefined ? String(req.body.password) : current.password,
+    url:
+      req.body.url !== undefined
+        ? req.body.url?.trim()
+          ? req.body.url.trim()
+          : null
+        : current.url,
     description:
       req.body.description !== undefined
         ? req.body.description?.trim()
@@ -119,7 +182,13 @@ router.put('/projects/:projectId/accounts/:accountId', (req, res) => {
   res.json(mockStore.devAccounts[idx])
 })
 
-router.delete('/projects/:projectId/accounts/:accountId', (req, res) => {
+router.delete('/projects/:projectId/accounts/:accountId', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const deleted = await deleteDevAccount(req.user.id, req.params.projectId, req.params.accountId)
+    if (!deleted) return res.status(404).json({ error: 'Not found' })
+    return res.status(204).send()
+  }
+
   const project = mockStore.devProjects.find(
     (p) => p.id === req.params.projectId && p.userId === req.user.id,
   )

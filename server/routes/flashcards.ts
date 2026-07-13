@@ -1,12 +1,31 @@
 import { Router } from 'express'
 import { mockStore, id, now } from '../mock-store.js'
-import type { Difficulty } from '../mock-store.js'
+import type { Difficulty, ReviewRating } from '../mock-store.js'
+import {
+  createFlashcard,
+  deleteFlashcard,
+  getFlashcard,
+  isDatabaseEnabled,
+  listDueFlashcards,
+  listFlashcards,
+  reviewFlashcard,
+  updateFlashcard,
+} from '../db/repositories.js'
+import { queryParam } from './params.js'
 
 const REVIEW_INTERVALS = [1, 3, 7, 14, 30]
 
 const router = Router()
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const items = await listFlashcards(req.user.id, {
+      category: queryParam(req.query.category),
+      search: queryParam(req.query.search),
+    })
+    return res.json(items)
+  }
+
   let items = mockStore.flashcards.filter((f) => f.userId === req.user.id)
   const { category, search } = req.query
   if (category) items = items.filter((f) => f.category === category)
@@ -19,7 +38,11 @@ router.get('/', (req, res) => {
   res.json(items)
 })
 
-router.get('/due', (req, res) => {
+router.get('/due', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    return res.json(await listDueFlashcards(req.user.id))
+  }
+
   const due = mockStore.flashcards.filter(
     (f) =>
       f.userId === req.user.id &&
@@ -29,13 +52,24 @@ router.get('/due', (req, res) => {
   res.json(due)
 })
 
-router.get('/:id', (req, res) => {
-  const card = mockStore.flashcards.find((f) => f.id === req.params.id)
+router.get('/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const card = await getFlashcard(req.user.id, req.params.id)
+    if (!card) return res.status(404).json({ error: 'Not found' })
+    return res.json(card)
+  }
+
+  const card = mockStore.flashcards.find((f) => f.id === req.params.id && f.userId === req.user.id)
   if (!card) return res.status(404).json({ error: 'Not found' })
   res.json(card)
 })
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const card = await createFlashcard(req.user.id, req.body)
+    return res.status(201).json(card)
+  }
+
   const { category, question, answer, difficulty, personalNotes } = req.body
   const card = {
     id: id(),
@@ -55,22 +89,40 @@ router.post('/', (req, res) => {
   res.status(201).json(card)
 })
 
-router.put('/:id', (req, res) => {
-  const idx = mockStore.flashcards.findIndex((f) => f.id === req.params.id)
+router.put('/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const card = await updateFlashcard(req.user.id, req.params.id, req.body)
+    if (!card) return res.status(404).json({ error: 'Not found' })
+    return res.json(card)
+  }
+
+  const idx = mockStore.flashcards.findIndex((f) => f.id === req.params.id && f.userId === req.user.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
   mockStore.flashcards[idx] = { ...mockStore.flashcards[idx], ...req.body, updatedAt: now() }
   res.json(mockStore.flashcards[idx])
 })
 
-router.delete('/:id', (req, res) => {
-  const idx = mockStore.flashcards.findIndex((f) => f.id === req.params.id)
+router.delete('/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const deleted = await deleteFlashcard(req.user.id, req.params.id)
+    if (!deleted) return res.status(404).json({ error: 'Not found' })
+    return res.status(204).send()
+  }
+
+  const idx = mockStore.flashcards.findIndex((f) => f.id === req.params.id && f.userId === req.user.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
   mockStore.flashcards.splice(idx, 1)
   res.status(204).send()
 })
 
-router.post('/:id/review', (req, res) => {
-  const idx = mockStore.flashcards.findIndex((f) => f.id === req.params.id)
+router.post('/:id/review', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const card = await reviewFlashcard(req.user.id, req.params.id, req.body.rating as ReviewRating)
+    if (!card) return res.status(404).json({ error: 'Not found' })
+    return res.json(card)
+  }
+
+  const idx = mockStore.flashcards.findIndex((f) => f.id === req.params.id && f.userId === req.user.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
   const card = mockStore.flashcards[idx]
   const rating = req.body.rating as 'again' | 'hard' | 'good' | 'easy'

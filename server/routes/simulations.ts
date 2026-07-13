@@ -3,6 +3,7 @@ import { mockStore } from '../mock-store.js'
 import { generateBubbleSortSteps } from '../simulations/bubble-sort.js'
 import { generateMergeSortSteps } from '../simulations/merge-sort.js'
 import { generateBfsSteps } from '../simulations/bfs.js'
+import { isDatabaseEnabled, searchEverything } from '../db/repositories.js'
 
 const router = Router()
 
@@ -48,8 +49,12 @@ router.post('/generate', (req, res) => {
   res.json({ type, ...result })
 })
 
-router.get('/search', (req, res) => {
+router.get('/search', async (req, res) => {
   const q = ((req.query.q as string) ?? '').toLowerCase()
+  if (isDatabaseEnabled()) {
+    return res.json(await searchEverything(req.user.id, q))
+  }
+
   const articles = mockStore.articles.filter(
     (a) =>
       a.userId === req.user.id &&

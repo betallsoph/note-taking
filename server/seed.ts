@@ -27,6 +27,12 @@ async function seed() {
     { userId: MOCK_USER_ID, name: 'Data Structures', slug: 'data-structures', color: '#10b981', icon: 'TreeStructure' },
     { userId: MOCK_USER_ID, name: 'Algorithms', slug: 'algorithms', color: '#3b82f6', icon: 'Graph' },
     { userId: MOCK_USER_ID, name: 'Databases', slug: 'databases', color: '#f59e0b', icon: 'Database' },
+    { userId: MOCK_USER_ID, name: 'Backend', slug: 'backend', color: '#06b6d4', icon: 'Code' },
+    { userId: MOCK_USER_ID, name: 'Frontend', slug: 'frontend', color: '#ec4899', icon: 'Browsers' },
+    { userId: MOCK_USER_ID, name: 'Mobile', slug: 'mobile', color: '#22c55e', icon: 'DeviceMobile' },
+    { userId: MOCK_USER_ID, name: 'Infra', slug: 'infra', color: '#6366f1', icon: 'Cloud' },
+    { userId: MOCK_USER_ID, name: 'DevOps', slug: 'devops', color: '#f97316', icon: 'GitBranch' },
+    { userId: MOCK_USER_ID, name: 'Security', slug: 'security', color: '#ef4444', icon: 'ShieldCheck' },
     { userId: MOCK_USER_ID, name: 'Operating Systems', slug: 'operating-systems', color: '#8b5cf6', icon: 'Desktop' },
     { userId: MOCK_USER_ID, name: 'System Design', slug: 'system-design', color: '#ec4899', icon: 'Cloud' },
   ]).returning()
@@ -37,6 +43,14 @@ async function seed() {
     { userId: MOCK_USER_ID, name: 'PostgreSQL', slug: 'postgresql' },
     { userId: MOCK_USER_ID, name: 'Hash Map', slug: 'hash-map' },
     { userId: MOCK_USER_ID, name: 'Dynamic Programming', slug: 'dynamic-programming' },
+    { userId: MOCK_USER_ID, name: 'Docker', slug: 'docker' },
+    { userId: MOCK_USER_ID, name: 'Kubernetes', slug: 'kubernetes' },
+    { userId: MOCK_USER_ID, name: 'CI/CD', slug: 'ci-cd' },
+    { userId: MOCK_USER_ID, name: 'Flutter', slug: 'flutter' },
+    { userId: MOCK_USER_ID, name: 'React Native', slug: 'react-native' },
+    { userId: MOCK_USER_ID, name: 'AWS', slug: 'aws' },
+    { userId: MOCK_USER_ID, name: 'Neon', slug: 'neon' },
+    { userId: MOCK_USER_ID, name: 'MongoDB Atlas', slug: 'mongodb-atlas' },
   ]).returning()
 
   const dbCat = categories.find((c) => c.slug === 'databases')!
@@ -118,17 +132,36 @@ async function seed() {
   await db.insert(schema.devAccounts).values([
     {
       projectId: devProject.id,
+      kind: 'login',
+      provider: 'CS Hub',
+      environment: 'staging',
       name: 'Admin',
       username: 'admin@cshub.dev',
       password: 'Admin@123',
+      url: null,
       description: 'Full access staging admin',
     },
     {
       projectId: devProject.id,
+      kind: 'login',
+      provider: 'CS Hub',
+      environment: 'staging',
       name: 'QA Tester',
       username: 'qa.tester',
       password: 'QaTest!456',
+      url: null,
       description: 'Read/write QA account for manual testing',
+    },
+    {
+      projectId: devProject.id,
+      kind: 'database',
+      provider: 'MongoDB Atlas',
+      environment: 'dev',
+      name: 'Atlas Database User',
+      username: 'hugoddt123450_db_user',
+      password: 'example-secret',
+      url: 'https://cloud.mongodb.com',
+      description: 'Store generated database users and connection notes here instead of screenshots.',
     },
   ])
 

@@ -1,0 +1,1011 @@
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
+import { and, desc, eq, inArray, lte } from 'drizzle-orm'
+import { db, type Database } from './index.js'
+import * as schema from './schema.js'
+import type { AuthUser } from '../middleware/auth.js'
+import {
+  slugify,
+  type Article,
+  type ArticleStatus,
+  type Category,
+  type DashboardStats,
+  type DevAccount,
+  type DevCredentialKind,
+  type DevProject,
+  type Difficulty,
+  type Flashcard,
+  type Mistake,
+  type MistakeType,
+  type Problem,
+  type ReviewRating,
+  type Roadmap,
+  type RoadmapItem,
+  type RoadmapItemStatus,
+  type Solution,
+} from '../mock-store.js'
+
+const REVIEW_INTERVALS = [1, 3, 7, 14, 30]
+const ENCRYPTED_SECRET_PREFIX = 'enc:v1'
+
+type ArticleRow = typeof schema.articles.$inferSelect
+type CategoryRow = typeof schema.categories.$inferSelect
+type DevAccountRow = typeof schema.devAccounts.$inferSelect
+type DevProjectRow = typeof schema.devProjects.$inferSelect
+type FlashcardRow = typeof schema.flashcards.$inferSelect
+type MistakeRow = typeof schema.mistakes.$inferSelect
+type ProblemRow = typeof schema.problems.$inferSelect
+type RoadmapItemRow = typeof schema.roadmapItems.$inferSelect
+type RoadmapRow = typeof schema.roadmaps.$inferSelect
+type SolutionRow = typeof schema.solutions.$inferSelect
+type TagRow = typeof schema.tags.$inferSelect
+
+function requireDb(): Database {
+  if (!db) throw new Error('DATABASE_URL is not configured')
+  return db
+}
+
+export function isDatabaseEnabled() {
+  return db !== null
+}
+
+function toIso(value: Date | string) {
+  return value instanceof Date ? value.toISOString() : value
+}
+
+function nullableIso(value: Date | string | null) {
+  return value ? toIso(value) : null
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function optionalDate(value: unknown): Date | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  return new Date(String(value))
+}
+
+function optionalString(value: unknown) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed || null
+}
+
+function secretKey() {
+  const raw = process.env.SECRET_ENCRYPTION_KEY
+  if (!raw) return null
+  return createHash('sha256').update(raw).digest()
+}
+
+function encryptSecret(value: string) {
+  const key = secretKey()
+  if (!key || value.startsWith(`${ENCRYPTED_SECRET_PREFIX}:`)) return value
+
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return [
+    ENCRYPTED_SECRET_PREFIX,
+    iv.toString('base64url'),
+    tag.toString('base64url'),
+    encrypted.toString('base64url'),
+  ].join(':')
+}
+
+function decryptSecret(value: string) {
+  if (!value.startsWith(`${ENCRYPTED_SECRET_PREFIX}:`)) return value
+  const key = secretKey()
+  if (!key) return '[encrypted secret - set SECRET_ENCRYPTION_KEY]'
+
+  try {
+    const [, , iv, tag, encrypted] = value.split(':')
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'))
+    decipher.setAuthTag(Buffer.from(tag, 'base64url'))
+    return Buffer.concat([
+      decipher.update(Buffer.from(encrypted, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8')
+  } catch {
+    return '[secret decrypt failed]'
+  }
+}
+
+function serializeCategory(row: CategoryRow): Category {
+  return {
+    ...row,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializeTag(row: TagRow) {
+  return {
+    ...row,
+    createdAt: toIso(row.createdAt),
+  }
+}
+
+function serializeArticle(row: ArticleRow, tagIds: string[] = []): Article {
+  return {
+    ...row,
+    content: asRecord(row.content),
+    tagIds,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializeProblem(row: ProblemRow, tagIds: string[] = []): Problem {
+  return {
+    ...row,
+    examples: asArray(row.examples),
+    tagIds,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializeSolution(row: SolutionRow): Solution {
+  return {
+    ...row,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializeMistake(row: MistakeRow): Mistake {
+  return {
+    ...row,
+    createdAt: toIso(row.createdAt),
+  }
+}
+
+function serializeFlashcard(row: FlashcardRow): Flashcard {
+  return {
+    ...row,
+    nextReviewAt: nullableIso(row.nextReviewAt),
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializeRoadmap(row: RoadmapRow): Roadmap {
+  return {
+    ...row,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializeRoadmapItem(row: RoadmapItemRow): RoadmapItem {
+  return {
+    ...row,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializeDevProject(row: DevProjectRow): DevProject {
+  return {
+    ...row,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializeDevAccount(row: DevAccountRow): DevAccount {
+  return {
+    ...row,
+    kind: row.kind as DevCredentialKind,
+    password: decryptSecret(row.password),
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+async function articleTagMap(database: Database, articleIds: string[]) {
+  const map = new Map<string, string[]>()
+  if (articleIds.length === 0) return map
+  const rows = await database
+    .select()
+    .from(schema.articleTags)
+    .where(inArray(schema.articleTags.articleId, articleIds))
+  for (const row of rows) {
+    const existing = map.get(row.articleId) ?? []
+    existing.push(row.tagId)
+    map.set(row.articleId, existing)
+  }
+  return map
+}
+
+async function problemTagMap(database: Database, problemIds: string[]) {
+  const map = new Map<string, string[]>()
+  if (problemIds.length === 0) return map
+  const rows = await database
+    .select()
+    .from(schema.problemTags)
+    .where(inArray(schema.problemTags.problemId, problemIds))
+  for (const row of rows) {
+    const existing = map.get(row.problemId) ?? []
+    existing.push(row.tagId)
+    map.set(row.problemId, existing)
+  }
+  return map
+}
+
+export async function ensureUser(user: AuthUser) {
+  if (!db) return
+  await db
+    .insert(schema.users)
+    .values({ id: user.id, email: user.email, name: user.name })
+    .onConflictDoUpdate({
+      target: schema.users.id,
+      set: { email: user.email, name: user.name, updatedAt: new Date() },
+    })
+}
+
+export async function getDashboardStats(userId: string): Promise<DashboardStats> {
+  const database = requireDb()
+  const [articleRows, problemRows, flashcardRows, roadmapRows] = await Promise.all([
+    database
+      .select()
+      .from(schema.articles)
+      .where(and(eq(schema.articles.userId, userId), eq(schema.articles.isArchived, false)))
+      .orderBy(desc(schema.articles.updatedAt)),
+    database.select().from(schema.problems).where(eq(schema.problems.userId, userId)),
+    database.select().from(schema.flashcards).where(eq(schema.flashcards.userId, userId)),
+    database.select().from(schema.roadmaps).where(eq(schema.roadmaps.userId, userId)),
+  ])
+  const tagIds = await articleTagMap(database, articleRows.map((article) => article.id))
+  const recentlyUpdatedNotes = articleRows
+    .slice(0, 5)
+    .map((article) => serializeArticle(article, tagIds.get(article.id) ?? []))
+
+  return {
+    totalArticles: articleRows.length,
+    totalProblems: problemRows.length,
+    totalFlashcards: flashcardRows.length,
+    totalRoadmaps: roadmapRows.length,
+    topicsCompleted: articleRows.filter((article) => article.status === 'completed').length,
+    learningStreak: 7,
+    reviewDueToday: flashcardRows.filter(
+      (card) => card.nextReviewAt && card.nextReviewAt <= new Date(),
+    ).length,
+    recentlyUpdatedNotes,
+  }
+}
+
+export async function listCategories(userId: string) {
+  const rows = await requireDb()
+    .select()
+    .from(schema.categories)
+    .where(eq(schema.categories.userId, userId))
+    .orderBy(schema.categories.name)
+  return rows.map(serializeCategory)
+}
+
+export async function createCategory(userId: string, body: { name: string; description?: string | null; icon?: string | null; color?: string | null }) {
+  const [row] = await requireDb()
+    .insert(schema.categories)
+    .values({
+      userId,
+      name: body.name,
+      slug: slugify(body.name),
+      description: body.description ?? null,
+      icon: body.icon ?? null,
+      color: body.color ?? null,
+    })
+    .returning()
+  return serializeCategory(row)
+}
+
+export async function updateCategory(userId: string, categoryId: string, body: Record<string, unknown>) {
+  const updates: Partial<typeof schema.categories.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.name === 'string') {
+    updates.name = body.name
+    updates.slug = slugify(body.name)
+  }
+  if ('description' in body) updates.description = body.description ? String(body.description) : null
+  if ('icon' in body) updates.icon = body.icon ? String(body.icon) : null
+  if ('color' in body) updates.color = body.color ? String(body.color) : null
+
+  const [row] = await requireDb()
+    .update(schema.categories)
+    .set(updates)
+    .where(and(eq(schema.categories.id, categoryId), eq(schema.categories.userId, userId)))
+    .returning()
+  return row ? serializeCategory(row) : null
+}
+
+export async function deleteCategory(userId: string, categoryId: string) {
+  const [row] = await requireDb()
+    .delete(schema.categories)
+    .where(and(eq(schema.categories.id, categoryId), eq(schema.categories.userId, userId)))
+    .returning({ id: schema.categories.id })
+  return Boolean(row)
+}
+
+export async function listTags(userId: string) {
+  const rows = await requireDb()
+    .select()
+    .from(schema.tags)
+    .where(eq(schema.tags.userId, userId))
+    .orderBy(schema.tags.name)
+  return rows.map(serializeTag)
+}
+
+export async function createTag(userId: string, body: { name: string; color?: string | null }) {
+  const [row] = await requireDb()
+    .insert(schema.tags)
+    .values({
+      userId,
+      name: body.name,
+      slug: slugify(body.name),
+      color: body.color ?? null,
+    })
+    .returning()
+  return serializeTag(row)
+}
+
+export async function deleteTag(userId: string, tagId: string) {
+  const [row] = await requireDb()
+    .delete(schema.tags)
+    .where(and(eq(schema.tags.id, tagId), eq(schema.tags.userId, userId)))
+    .returning({ id: schema.tags.id })
+  return Boolean(row)
+}
+
+export async function listArticles(
+  userId: string,
+  filters: { category?: string; status?: string; tag?: string; search?: string },
+) {
+  const database = requireDb()
+  const rows = await database
+    .select()
+    .from(schema.articles)
+    .where(and(eq(schema.articles.userId, userId), eq(schema.articles.isArchived, false)))
+    .orderBy(desc(schema.articles.updatedAt))
+  const tagIds = await articleTagMap(database, rows.map((article) => article.id))
+  const query = filters.search?.toLowerCase()
+
+  return rows
+    .map((article) => serializeArticle(article, tagIds.get(article.id) ?? []))
+    .filter((article) => !filters.category || article.categoryId === filters.category)
+    .filter((article) => !filters.status || article.status === filters.status)
+    .filter((article) => !filters.tag || article.tagIds.includes(filters.tag))
+    .filter(
+      (article) =>
+        !query ||
+        article.title.toLowerCase().includes(query) ||
+        article.excerpt?.toLowerCase().includes(query),
+    )
+}
+
+export async function getArticle(userId: string, articleId: string) {
+  const database = requireDb()
+  const [row] = await database
+    .select()
+    .from(schema.articles)
+    .where(and(eq(schema.articles.id, articleId), eq(schema.articles.userId, userId)))
+    .limit(1)
+  if (!row) return null
+  const tags = await articleTagMap(database, [row.id])
+  return serializeArticle(row, tags.get(row.id) ?? [])
+}
+
+export async function createArticle(userId: string, body: Record<string, unknown>) {
+  const database = requireDb()
+  const title = String(body.title)
+  const tagIds = stringArray(body.tagIds)
+  const [row] = await database
+    .insert(schema.articles)
+    .values({
+      userId,
+      categoryId: typeof body.categoryId === 'string' ? body.categoryId : null,
+      title,
+      slug: slugify(title),
+      content: body.content ? asRecord(body.content) : { type: 'doc', content: [] },
+      excerpt: body.excerpt ? String(body.excerpt) : null,
+      status: ((body.status as ArticleStatus | undefined) ?? 'not_started'),
+    })
+    .returning()
+  if (tagIds.length > 0) {
+    await database.insert(schema.articleTags).values(tagIds.map((tagId) => ({ articleId: row.id, tagId })))
+  }
+  return serializeArticle(row, tagIds)
+}
+
+export async function updateArticle(userId: string, articleId: string, body: Record<string, unknown>) {
+  const database = requireDb()
+  const existing = await getArticle(userId, articleId)
+  if (!existing) return null
+
+  const updates: Partial<typeof schema.articles.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.title === 'string') {
+    updates.title = body.title
+    updates.slug = slugify(body.title)
+  }
+  if ('categoryId' in body) updates.categoryId = typeof body.categoryId === 'string' ? body.categoryId : null
+  if ('content' in body) updates.content = asRecord(body.content)
+  if ('excerpt' in body) updates.excerpt = body.excerpt ? String(body.excerpt) : null
+  if (typeof body.status === 'string') updates.status = body.status as ArticleStatus
+  if (typeof body.isArchived === 'boolean') updates.isArchived = body.isArchived
+
+  const [row] = await database
+    .update(schema.articles)
+    .set(updates)
+    .where(and(eq(schema.articles.id, articleId), eq(schema.articles.userId, userId)))
+    .returning()
+  if (!row) return null
+
+  let tagIds = existing.tagIds
+  if ('tagIds' in body) {
+    tagIds = stringArray(body.tagIds)
+    await database.delete(schema.articleTags).where(eq(schema.articleTags.articleId, articleId))
+    if (tagIds.length > 0) {
+      await database.insert(schema.articleTags).values(tagIds.map((tagId) => ({ articleId, tagId })))
+    }
+  }
+  return serializeArticle(row, tagIds)
+}
+
+export async function deleteArticle(userId: string, articleId: string) {
+  const [row] = await requireDb()
+    .delete(schema.articles)
+    .where(and(eq(schema.articles.id, articleId), eq(schema.articles.userId, userId)))
+    .returning({ id: schema.articles.id })
+  return Boolean(row)
+}
+
+export async function duplicateArticle(userId: string, articleId: string) {
+  const database = requireDb()
+  const original = await getArticle(userId, articleId)
+  if (!original) return null
+  const [row] = await database
+    .insert(schema.articles)
+    .values({
+      userId,
+      categoryId: original.categoryId,
+      title: `${original.title} (Copy)`,
+      slug: slugify(`${original.title}-copy-${Date.now()}`),
+      content: original.content,
+      excerpt: original.excerpt,
+      status: original.status,
+      isArchived: original.isArchived,
+    })
+    .returning()
+  if (original.tagIds.length > 0) {
+    await database.insert(schema.articleTags).values(
+      original.tagIds.map((tagId) => ({ articleId: row.id, tagId })),
+    )
+  }
+  return serializeArticle(row, original.tagIds)
+}
+
+export async function archiveArticle(userId: string, articleId: string) {
+  return updateArticle(userId, articleId, { isArchived: true })
+}
+
+export async function listProblems(
+  userId: string,
+  filters: { difficulty?: string; tag?: string; search?: string },
+) {
+  const database = requireDb()
+  const rows = await database
+    .select()
+    .from(schema.problems)
+    .where(eq(schema.problems.userId, userId))
+    .orderBy(desc(schema.problems.updatedAt))
+  const tagIds = await problemTagMap(database, rows.map((problem) => problem.id))
+  const query = filters.search?.toLowerCase()
+  return rows
+    .map((problem) => serializeProblem(problem, tagIds.get(problem.id) ?? []))
+    .filter((problem) => !filters.difficulty || problem.difficulty === filters.difficulty)
+    .filter((problem) => !filters.tag || problem.tagIds.includes(filters.tag))
+    .filter((problem) => !query || problem.title.toLowerCase().includes(query))
+}
+
+export async function getProblem(userId: string, problemId: string) {
+  const database = requireDb()
+  const [row] = await database
+    .select()
+    .from(schema.problems)
+    .where(and(eq(schema.problems.id, problemId), eq(schema.problems.userId, userId)))
+    .limit(1)
+  if (!row) return null
+  const [tags, solutionRows, mistakeRows] = await Promise.all([
+    problemTagMap(database, [problemId]),
+    database.select().from(schema.solutions).where(eq(schema.solutions.problemId, problemId)),
+    database.select().from(schema.mistakes).where(eq(schema.mistakes.problemId, problemId)),
+  ])
+  return {
+    ...serializeProblem(row, tags.get(problemId) ?? []),
+    solutions: solutionRows.map(serializeSolution),
+    mistakes: mistakeRows.map(serializeMistake),
+  }
+}
+
+export async function createProblem(userId: string, body: Record<string, unknown>) {
+  const database = requireDb()
+  const title = String(body.title)
+  const tagIds = stringArray(body.tagIds)
+  const [row] = await database
+    .insert(schema.problems)
+    .values({
+      userId,
+      title,
+      slug: slugify(title),
+      difficulty: ((body.difficulty as Difficulty | undefined) ?? 'medium'),
+      description: String(body.description),
+      constraints: body.constraints ? String(body.constraints) : null,
+      examples: asArray(body.examples),
+      source: body.source ? String(body.source) : null,
+      learningNotes: body.learningNotes ? String(body.learningNotes) : null,
+      isSolved: typeof body.isSolved === 'boolean' ? body.isSolved : false,
+    })
+    .returning()
+  if (tagIds.length > 0) {
+    await database.insert(schema.problemTags).values(tagIds.map((tagId) => ({ problemId: row.id, tagId })))
+  }
+  return serializeProblem(row, tagIds)
+}
+
+export async function updateProblem(userId: string, problemId: string, body: Record<string, unknown>) {
+  const database = requireDb()
+  const existing = await getProblem(userId, problemId)
+  if (!existing) return null
+
+  const updates: Partial<typeof schema.problems.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.title === 'string') {
+    updates.title = body.title
+    updates.slug = slugify(body.title)
+  }
+  if (typeof body.difficulty === 'string') updates.difficulty = body.difficulty as Difficulty
+  if (typeof body.description === 'string') updates.description = body.description
+  if ('constraints' in body) updates.constraints = body.constraints ? String(body.constraints) : null
+  if ('examples' in body) updates.examples = asArray(body.examples)
+  if ('source' in body) updates.source = body.source ? String(body.source) : null
+  if ('learningNotes' in body) updates.learningNotes = body.learningNotes ? String(body.learningNotes) : null
+  if (typeof body.isSolved === 'boolean') updates.isSolved = body.isSolved
+
+  const [row] = await database
+    .update(schema.problems)
+    .set(updates)
+    .where(and(eq(schema.problems.id, problemId), eq(schema.problems.userId, userId)))
+    .returning()
+  if (!row) return null
+
+  let tagIds = existing.tagIds
+  if ('tagIds' in body) {
+    tagIds = stringArray(body.tagIds)
+    await database.delete(schema.problemTags).where(eq(schema.problemTags.problemId, problemId))
+    if (tagIds.length > 0) {
+      await database.insert(schema.problemTags).values(tagIds.map((tagId) => ({ problemId, tagId })))
+    }
+  }
+  return serializeProblem(row, tagIds)
+}
+
+export async function deleteProblem(userId: string, problemId: string) {
+  const [row] = await requireDb()
+    .delete(schema.problems)
+    .where(and(eq(schema.problems.id, problemId), eq(schema.problems.userId, userId)))
+    .returning({ id: schema.problems.id })
+  return Boolean(row)
+}
+
+export async function addSolution(userId: string, problemId: string, body: Record<string, unknown>) {
+  const problem = await getProblem(userId, problemId)
+  if (!problem) return null
+  const [row] = await requireDb()
+    .insert(schema.solutions)
+    .values({
+      problemId,
+      title: String(body.title),
+      explanation: body.explanation ? String(body.explanation) : null,
+      code: String(body.code),
+      language: body.language ? String(body.language) : 'typescript',
+      timeComplexity: body.timeComplexity ? String(body.timeComplexity) : null,
+      spaceComplexity: body.spaceComplexity ? String(body.spaceComplexity) : null,
+      notes: body.notes ? String(body.notes) : null,
+      isOptimal: typeof body.isOptimal === 'boolean' ? body.isOptimal : false,
+    })
+    .returning()
+  return serializeSolution(row)
+}
+
+export async function addMistake(userId: string, problemId: string, body: Record<string, unknown>) {
+  const problem = await getProblem(userId, problemId)
+  if (!problem) return null
+  const [row] = await requireDb()
+    .insert(schema.mistakes)
+    .values({
+      problemId,
+      type: body.type as MistakeType,
+      description: String(body.description),
+      lessonLearned: body.lessonLearned ? String(body.lessonLearned) : null,
+    })
+    .returning()
+  return serializeMistake(row)
+}
+
+export async function listFlashcards(userId: string, filters: { category?: string; search?: string }) {
+  const rows = await requireDb()
+    .select()
+    .from(schema.flashcards)
+    .where(eq(schema.flashcards.userId, userId))
+    .orderBy(desc(schema.flashcards.updatedAt))
+  const query = filters.search?.toLowerCase()
+  return rows
+    .map(serializeFlashcard)
+    .filter((card) => !filters.category || card.category === filters.category)
+    .filter(
+      (card) =>
+        !query ||
+        card.question.toLowerCase().includes(query) ||
+        card.answer.toLowerCase().includes(query),
+    )
+}
+
+export async function listDueFlashcards(userId: string) {
+  const rows = await requireDb()
+    .select()
+    .from(schema.flashcards)
+    .where(and(eq(schema.flashcards.userId, userId), lte(schema.flashcards.nextReviewAt, new Date())))
+    .orderBy(schema.flashcards.nextReviewAt)
+  return rows.map(serializeFlashcard)
+}
+
+export async function getFlashcard(userId: string, flashcardId: string) {
+  const [row] = await requireDb()
+    .select()
+    .from(schema.flashcards)
+    .where(and(eq(schema.flashcards.id, flashcardId), eq(schema.flashcards.userId, userId)))
+    .limit(1)
+  return row ? serializeFlashcard(row) : null
+}
+
+export async function createFlashcard(userId: string, body: Record<string, unknown>) {
+  const [row] = await requireDb()
+    .insert(schema.flashcards)
+    .values({
+      userId,
+      category: String(body.category),
+      question: String(body.question),
+      answer: String(body.answer),
+      difficulty: ((body.difficulty as Difficulty | undefined) ?? 'medium'),
+      personalNotes: body.personalNotes ? String(body.personalNotes) : null,
+      nextReviewAt: new Date(),
+      reviewIntervalDays: 1,
+      reviewCount: 0,
+    })
+    .returning()
+  return serializeFlashcard(row)
+}
+
+export async function updateFlashcard(userId: string, flashcardId: string, body: Record<string, unknown>) {
+  const updates: Partial<typeof schema.flashcards.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.category === 'string') updates.category = body.category
+  if (typeof body.question === 'string') updates.question = body.question
+  if (typeof body.answer === 'string') updates.answer = body.answer
+  if (typeof body.difficulty === 'string') updates.difficulty = body.difficulty as Difficulty
+  if ('personalNotes' in body) updates.personalNotes = body.personalNotes ? String(body.personalNotes) : null
+  if ('nextReviewAt' in body) updates.nextReviewAt = optionalDate(body.nextReviewAt)
+  if (typeof body.reviewIntervalDays === 'number') updates.reviewIntervalDays = body.reviewIntervalDays
+  if (typeof body.reviewCount === 'number') updates.reviewCount = body.reviewCount
+
+  const [row] = await requireDb()
+    .update(schema.flashcards)
+    .set(updates)
+    .where(and(eq(schema.flashcards.id, flashcardId), eq(schema.flashcards.userId, userId)))
+    .returning()
+  return row ? serializeFlashcard(row) : null
+}
+
+export async function deleteFlashcard(userId: string, flashcardId: string) {
+  const [row] = await requireDb()
+    .delete(schema.flashcards)
+    .where(and(eq(schema.flashcards.id, flashcardId), eq(schema.flashcards.userId, userId)))
+    .returning({ id: schema.flashcards.id })
+  return Boolean(row)
+}
+
+export async function reviewFlashcard(userId: string, flashcardId: string, rating: ReviewRating) {
+  const card = await getFlashcard(userId, flashcardId)
+  if (!card) return null
+
+  let intervalIndex = REVIEW_INTERVALS.indexOf(card.reviewIntervalDays)
+  if (rating === 'again') intervalIndex = 0
+  else if (rating === 'hard') intervalIndex = Math.max(0, intervalIndex - 1)
+  else if (rating === 'good') intervalIndex = Math.min(REVIEW_INTERVALS.length - 1, intervalIndex + 1)
+  else intervalIndex = Math.min(REVIEW_INTERVALS.length - 1, intervalIndex + 2)
+
+  const newInterval = REVIEW_INTERVALS[intervalIndex]
+  const nextReviewAt = new Date()
+  nextReviewAt.setDate(nextReviewAt.getDate() + newInterval)
+
+  const database = requireDb()
+  const [row] = await database
+    .update(schema.flashcards)
+    .set({
+      reviewIntervalDays: newInterval,
+      reviewCount: card.reviewCount + 1,
+      nextReviewAt,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.flashcards.id, flashcardId), eq(schema.flashcards.userId, userId)))
+    .returning()
+  if (!row) return null
+  await database.insert(schema.reviews).values({ userId, flashcardId, rating, nextReviewAt })
+  return serializeFlashcard(row)
+}
+
+export async function listRoadmaps(userId: string) {
+  const database = requireDb()
+  const rows = await database
+    .select()
+    .from(schema.roadmaps)
+    .where(eq(schema.roadmaps.userId, userId))
+    .orderBy(desc(schema.roadmaps.updatedAt))
+  const roadmapIds = rows.map((roadmap) => roadmap.id)
+  const items = roadmapIds.length
+    ? await database
+        .select()
+        .from(schema.roadmapItems)
+        .where(inArray(schema.roadmapItems.roadmapId, roadmapIds))
+        .orderBy(schema.roadmapItems.orderIndex)
+    : []
+  return rows.map((roadmap) => ({
+    ...serializeRoadmap(roadmap),
+    items: items
+      .filter((item) => item.roadmapId === roadmap.id)
+      .map(serializeRoadmapItem),
+  }))
+}
+
+export async function getRoadmap(userId: string, roadmapId: string) {
+  const [row] = await requireDb()
+    .select()
+    .from(schema.roadmaps)
+    .where(and(eq(schema.roadmaps.id, roadmapId), eq(schema.roadmaps.userId, userId)))
+    .limit(1)
+  if (!row) return null
+  const items = await requireDb()
+    .select()
+    .from(schema.roadmapItems)
+    .where(eq(schema.roadmapItems.roadmapId, roadmapId))
+    .orderBy(schema.roadmapItems.orderIndex)
+  return { ...serializeRoadmap(row), items: items.map(serializeRoadmapItem) }
+}
+
+export async function createRoadmap(userId: string, body: Record<string, unknown>) {
+  const title = String(body.title)
+  const [row] = await requireDb()
+    .insert(schema.roadmaps)
+    .values({
+      userId,
+      title,
+      slug: slugify(title),
+      description: body.description ? String(body.description) : null,
+    })
+    .returning()
+  return serializeRoadmap(row)
+}
+
+export async function updateRoadmap(userId: string, roadmapId: string, body: Record<string, unknown>) {
+  const updates: Partial<typeof schema.roadmaps.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.title === 'string') {
+    updates.title = body.title
+    updates.slug = slugify(body.title)
+  }
+  if ('description' in body) updates.description = body.description ? String(body.description) : null
+
+  const [row] = await requireDb()
+    .update(schema.roadmaps)
+    .set(updates)
+    .where(and(eq(schema.roadmaps.id, roadmapId), eq(schema.roadmaps.userId, userId)))
+    .returning()
+  return row ? serializeRoadmap(row) : null
+}
+
+export async function deleteRoadmap(userId: string, roadmapId: string) {
+  const [row] = await requireDb()
+    .delete(schema.roadmaps)
+    .where(and(eq(schema.roadmaps.id, roadmapId), eq(schema.roadmaps.userId, userId)))
+    .returning({ id: schema.roadmaps.id })
+  return Boolean(row)
+}
+
+export async function addRoadmapItem(userId: string, roadmapId: string, body: Record<string, unknown>) {
+  const roadmap = await getRoadmap(userId, roadmapId)
+  if (!roadmap) return null
+  const existing = await requireDb()
+    .select()
+    .from(schema.roadmapItems)
+    .where(eq(schema.roadmapItems.roadmapId, roadmapId))
+  const [row] = await requireDb()
+    .insert(schema.roadmapItems)
+    .values({
+      roadmapId,
+      title: String(body.title),
+      description: body.description ? String(body.description) : null,
+      status: ((body.status as RoadmapItemStatus | undefined) ?? 'not_started'),
+      orderIndex: existing.length,
+    })
+    .returning()
+  return serializeRoadmapItem(row)
+}
+
+export async function updateRoadmapItem(userId: string, roadmapId: string, itemId: string, body: Record<string, unknown>) {
+  const roadmap = await getRoadmap(userId, roadmapId)
+  if (!roadmap) return null
+  const updates: Partial<typeof schema.roadmapItems.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.title === 'string') updates.title = body.title
+  if ('description' in body) updates.description = body.description ? String(body.description) : null
+  if (typeof body.status === 'string') updates.status = body.status as RoadmapItemStatus
+  if (typeof body.orderIndex === 'number') updates.orderIndex = body.orderIndex
+
+  const [row] = await requireDb()
+    .update(schema.roadmapItems)
+    .set(updates)
+    .where(and(eq(schema.roadmapItems.id, itemId), eq(schema.roadmapItems.roadmapId, roadmapId)))
+    .returning()
+  return row ? serializeRoadmapItem(row) : null
+}
+
+export async function deleteRoadmapItem(userId: string, roadmapId: string, itemId: string) {
+  const roadmap = await getRoadmap(userId, roadmapId)
+  if (!roadmap) return false
+  const [row] = await requireDb()
+    .delete(schema.roadmapItems)
+    .where(and(eq(schema.roadmapItems.id, itemId), eq(schema.roadmapItems.roadmapId, roadmapId)))
+    .returning({ id: schema.roadmapItems.id })
+  return Boolean(row)
+}
+
+export async function listDevProjects(userId: string) {
+  const database = requireDb()
+  const projects = await database
+    .select()
+    .from(schema.devProjects)
+    .where(eq(schema.devProjects.userId, userId))
+    .orderBy(schema.devProjects.name)
+  const projectIds = projects.map((project) => project.id)
+  const accounts = projectIds.length
+    ? await database
+        .select()
+        .from(schema.devAccounts)
+        .where(inArray(schema.devAccounts.projectId, projectIds))
+        .orderBy(schema.devAccounts.name)
+    : []
+  return projects.map((project) => ({
+    ...serializeDevProject(project),
+    accounts: accounts
+      .filter((account) => account.projectId === project.id)
+      .map(serializeDevAccount),
+  }))
+}
+
+export async function createDevProject(userId: string, body: Record<string, unknown>) {
+  const name = String(body.name).trim()
+  const [row] = await requireDb()
+    .insert(schema.devProjects)
+    .values({
+      userId,
+      name,
+      slug: slugify(name),
+      description: body.description ? String(body.description).trim() : null,
+    })
+    .returning()
+  return { ...serializeDevProject(row), accounts: [] }
+}
+
+export async function updateDevProject(userId: string, projectId: string, body: Record<string, unknown>) {
+  const updates: Partial<typeof schema.devProjects.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.name === 'string') {
+    const name = body.name.trim()
+    updates.name = name
+    updates.slug = slugify(name)
+  }
+  if ('description' in body) updates.description = body.description ? String(body.description).trim() : null
+  const [row] = await requireDb()
+    .update(schema.devProjects)
+    .set(updates)
+    .where(and(eq(schema.devProjects.id, projectId), eq(schema.devProjects.userId, userId)))
+    .returning()
+  return row ? serializeDevProject(row) : null
+}
+
+export async function deleteDevProject(userId: string, projectId: string) {
+  const [row] = await requireDb()
+    .delete(schema.devProjects)
+    .where(and(eq(schema.devProjects.id, projectId), eq(schema.devProjects.userId, userId)))
+    .returning({ id: schema.devProjects.id })
+  return Boolean(row)
+}
+
+export async function createDevAccount(userId: string, projectId: string, body: Record<string, unknown>) {
+  const project = await getDevProject(userId, projectId)
+  if (!project) return null
+  const [row] = await requireDb()
+    .insert(schema.devAccounts)
+    .values({
+      projectId,
+      kind: ((body.kind as DevCredentialKind | undefined) ?? 'login'),
+      provider: optionalString(body.provider),
+      environment: optionalString(body.environment) ?? 'dev',
+      name: String(body.name).trim(),
+      username: String(body.username).trim(),
+      password: encryptSecret(String(body.password)),
+      url: optionalString(body.url),
+      description: optionalString(body.description),
+    })
+    .returning()
+  return serializeDevAccount(row)
+}
+
+export async function updateDevAccount(
+  userId: string,
+  projectId: string,
+  accountId: string,
+  body: Record<string, unknown>,
+) {
+  const project = await getDevProject(userId, projectId)
+  if (!project) return null
+  const updates: Partial<typeof schema.devAccounts.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.kind === 'string') updates.kind = body.kind as DevCredentialKind
+  if ('provider' in body) updates.provider = optionalString(body.provider)
+  if (typeof body.environment === 'string') updates.environment = optionalString(body.environment) ?? 'dev'
+  if (typeof body.name === 'string') updates.name = body.name.trim()
+  if (typeof body.username === 'string') updates.username = body.username.trim()
+  if ('password' in body) updates.password = encryptSecret(String(body.password))
+  if ('url' in body) updates.url = optionalString(body.url)
+  if ('description' in body) updates.description = optionalString(body.description)
+  const [row] = await requireDb()
+    .update(schema.devAccounts)
+    .set(updates)
+    .where(and(eq(schema.devAccounts.id, accountId), eq(schema.devAccounts.projectId, projectId)))
+    .returning()
+  return row ? serializeDevAccount(row) : null
+}
+
+export async function deleteDevAccount(userId: string, projectId: string, accountId: string) {
+  const project = await getDevProject(userId, projectId)
+  if (!project) return false
+  const [row] = await requireDb()
+    .delete(schema.devAccounts)
+    .where(and(eq(schema.devAccounts.id, accountId), eq(schema.devAccounts.projectId, projectId)))
+    .returning({ id: schema.devAccounts.id })
+  return Boolean(row)
+}
+
+async function getDevProject(userId: string, projectId: string) {
+  const [row] = await requireDb()
+    .select()
+    .from(schema.devProjects)
+    .where(and(eq(schema.devProjects.id, projectId), eq(schema.devProjects.userId, userId)))
+    .limit(1)
+  return row ? serializeDevProject(row) : null
+}
+
+export async function searchEverything(userId: string, query: string) {
+  const q = query.toLowerCase()
+  const [articles, problems, flashcards] = await Promise.all([
+    listArticles(userId, { search: q }),
+    listProblems(userId, { search: q }),
+    listFlashcards(userId, { search: q }),
+  ])
+  return { articles, problems, flashcards }
+}

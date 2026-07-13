@@ -1,10 +1,31 @@
 import { Router } from 'express'
 import { mockStore, id, now, slugify } from '../mock-store.js'
 import type { ArticleStatus } from '../mock-store.js'
+import {
+  archiveArticle,
+  createArticle,
+  deleteArticle,
+  duplicateArticle,
+  getArticle,
+  isDatabaseEnabled,
+  listArticles,
+  updateArticle,
+} from '../db/repositories.js'
+import { queryParam } from './params.js'
 
 const router = Router()
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const items = await listArticles(req.user.id, {
+      category: queryParam(req.query.category),
+      status: queryParam(req.query.status),
+      tag: queryParam(req.query.tag),
+      search: queryParam(req.query.search),
+    })
+    return res.json(items)
+  }
+
   let items = mockStore.articles.filter(
     (a) => a.userId === req.user.id && !a.isArchived,
   )
@@ -21,13 +42,24 @@ router.get('/', (req, res) => {
   res.json(items)
 })
 
-router.get('/:id', (req, res) => {
-  const article = mockStore.articles.find((a) => a.id === req.params.id)
+router.get('/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const article = await getArticle(req.user.id, req.params.id)
+    if (!article) return res.status(404).json({ error: 'Not found' })
+    return res.json(article)
+  }
+
+  const article = mockStore.articles.find((a) => a.id === req.params.id && a.userId === req.user.id)
   if (!article) return res.status(404).json({ error: 'Not found' })
   res.json(article)
 })
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const article = await createArticle(req.user.id, req.body)
+    return res.status(201).json(article)
+  }
+
   const { title, categoryId, content, excerpt, status, tagIds } = req.body
   const article = {
     id: id(),
@@ -47,8 +79,14 @@ router.post('/', (req, res) => {
   res.status(201).json(article)
 })
 
-router.put('/:id', (req, res) => {
-  const idx = mockStore.articles.findIndex((a) => a.id === req.params.id)
+router.put('/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const article = await updateArticle(req.user.id, req.params.id, req.body)
+    if (!article) return res.status(404).json({ error: 'Not found' })
+    return res.json(article)
+  }
+
+  const idx = mockStore.articles.findIndex((a) => a.id === req.params.id && a.userId === req.user.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
   mockStore.articles[idx] = {
     ...mockStore.articles[idx],
@@ -58,15 +96,27 @@ router.put('/:id', (req, res) => {
   res.json(mockStore.articles[idx])
 })
 
-router.delete('/:id', (req, res) => {
-  const idx = mockStore.articles.findIndex((a) => a.id === req.params.id)
+router.delete('/:id', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const deleted = await deleteArticle(req.user.id, req.params.id)
+    if (!deleted) return res.status(404).json({ error: 'Not found' })
+    return res.status(204).send()
+  }
+
+  const idx = mockStore.articles.findIndex((a) => a.id === req.params.id && a.userId === req.user.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
   mockStore.articles.splice(idx, 1)
   res.status(204).send()
 })
 
-router.post('/:id/duplicate', (req, res) => {
-  const original = mockStore.articles.find((a) => a.id === req.params.id)
+router.post('/:id/duplicate', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const copy = await duplicateArticle(req.user.id, req.params.id)
+    if (!copy) return res.status(404).json({ error: 'Not found' })
+    return res.status(201).json(copy)
+  }
+
+  const original = mockStore.articles.find((a) => a.id === req.params.id && a.userId === req.user.id)
   if (!original) return res.status(404).json({ error: 'Not found' })
   const copy = {
     ...original,
@@ -80,8 +130,14 @@ router.post('/:id/duplicate', (req, res) => {
   res.status(201).json(copy)
 })
 
-router.post('/:id/archive', (req, res) => {
-  const idx = mockStore.articles.findIndex((a) => a.id === req.params.id)
+router.post('/:id/archive', async (req, res) => {
+  if (isDatabaseEnabled()) {
+    const article = await archiveArticle(req.user.id, req.params.id)
+    if (!article) return res.status(404).json({ error: 'Not found' })
+    return res.json(article)
+  }
+
+  const idx = mockStore.articles.findIndex((a) => a.id === req.params.id && a.userId === req.user.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
   mockStore.articles[idx].isArchived = true
   mockStore.articles[idx].updatedAt = now()

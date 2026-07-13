@@ -8,8 +8,9 @@ if (!connectionString) {
   console.warn('DATABASE_URL not set — API will use in-memory mock data')
 }
 
-const client = connectionString ? postgres(connectionString) : null
+const client = connectionString ? postgres(connectionString, { prepare: false }) : null
 
 export const db = client ? drizzle(client, { schema }) : null
+export const databaseMode = db ? 'neon' : 'mock'
 
 export type Database = NonNullable<typeof db>
