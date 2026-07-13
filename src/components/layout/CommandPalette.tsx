@@ -63,7 +63,7 @@ export function CommandPalette() {
                   Flashcards
                 </CommandItem>
                 <CommandItem icon={Key} onSelect={() => go('/dev-accounts')}>
-                  Dev Accounts
+                  Dev Vault
                 </CommandItem>
               </Command.Group>
             )}

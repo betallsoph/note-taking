@@ -3,6 +3,15 @@ export type Difficulty = 'easy' | 'medium' | 'hard'
 export type RoadmapItemStatus = 'not_started' | 'in_progress' | 'completed'
 export type MistakeType = 'wrong_answer' | 'tle' | 'mle' | 'logic_error'
 export type ReviewRating = 'again' | 'hard' | 'good' | 'easy'
+export type DevCredentialKind =
+  | 'login'
+  | 'api_key'
+  | 'database'
+  | 'connection_string'
+  | 'oauth_client'
+  | 'webhook_secret'
+  | 'ssh_key'
+  | 'env_var'
 
 export interface User {
   id: string
@@ -132,9 +141,13 @@ export interface Roadmap {
 export interface DevAccount {
   id: string
   projectId: string
+  kind: DevCredentialKind
+  provider: string | null
+  environment: string
   name: string
   username: string
   password: string
+  url: string | null
   description: string | null
   createdAt: string
   updatedAt: string
@@ -194,6 +207,23 @@ export const DIFFICULTY_COLORS: Record<Difficulty, string> = {
   hard: 'text-rose-500',
 }
 
-export const INTERVIEW_CATEGORIES = [
-  'OS', 'DB', 'Network', 'OOP', 'Java', 'Spring', 'React', 'Mobile', 'System Design',
+export const KNOWLEDGE_AREAS = [
+  'Backend',
+  'Frontend',
+  'Mobile',
+  'Infra',
+  'DevOps',
+  'Database',
+  'Security',
+  'Cloud',
+  'System Design',
+  'OS',
+  'Network',
+  'OOP',
+  'Java',
+  'Spring',
+  'React',
+  'AI',
 ] as const
+
+export const INTERVIEW_CATEGORIES = KNOWLEDGE_AREAS

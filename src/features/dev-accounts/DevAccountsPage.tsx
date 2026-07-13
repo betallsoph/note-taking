@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -17,14 +17,54 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { DevAccount, DevProject } from '@/types'
+import { Badge } from '@/components/ui/badge'
+import type { DevAccount, DevCredentialKind, DevProject } from '@/types'
 
 type ProjectForm = { name: string; description: string }
-type AccountForm = { name: string; username: string; password: string; description: string }
+type AccountForm = {
+  kind: DevCredentialKind
+  provider: string
+  environment: string
+  name: string
+  username: string
+  password: string
+  url: string
+  description: string
+}
 
 const NEW_PROJECT_VALUE = '__new__'
 const emptyProject: ProjectForm = { name: '', description: '' }
-const emptyAccount: AccountForm = { name: '', username: '', password: '', description: '' }
+const emptyAccount: AccountForm = {
+  kind: 'api_key',
+  provider: '',
+  environment: 'dev',
+  name: '',
+  username: '',
+  password: '',
+  url: '',
+  description: '',
+}
+
+const credentialTypes: Array<{ value: DevCredentialKind; label: string }> = [
+  { value: 'api_key', label: 'API Key' },
+  { value: 'database', label: 'Database User' },
+  { value: 'connection_string', label: 'Connection String' },
+  { value: 'login', label: 'Login' },
+  { value: 'oauth_client', label: 'OAuth Client' },
+  { value: 'webhook_secret', label: 'Webhook Secret' },
+  { value: 'ssh_key', label: 'SSH Key' },
+  { value: 'env_var', label: 'Env Var' },
+]
+
+const environments = ['dev', 'local', 'staging', 'qa', 'prod', 'sandbox'] as const
+
+function credentialLabel(kind?: string) {
+  return credentialTypes.find((item) => item.value === kind)?.label ?? 'Secret'
+}
+
+function environmentLabel(value?: string) {
+  return value ? value.toUpperCase() : 'DEV'
+}
 
 async function copyText(value: string) {
   try {
@@ -43,13 +83,19 @@ export function DevAccountsPage() {
   const [projectChoice, setProjectChoice] = useState<string>(NEW_PROJECT_VALUE)
   const [projectForm, setProjectForm] = useState<ProjectForm>(emptyProject)
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccount)
-  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({})
+  const [visibleSecrets, setVisibleSecrets] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
 
   const { data: projects, isLoading } = useQuery({
     queryKey: ['dev-accounts'],
     queryFn: api.devAccounts.listProjects,
   })
+
+  const vaultStats = useMemo(() => {
+    const projectCount = projects?.length ?? 0
+    const secretCount = projects?.reduce((sum, project) => sum + (project.accounts?.length ?? 0), 0) ?? 0
+    return { projectCount, secretCount }
+  }, [projects])
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dev-accounts'] })
 
@@ -127,9 +173,13 @@ export function DevAccountsPage() {
     setProjectChoice(projectId)
     setProjectForm(emptyProject)
     setAccountForm({
+      kind: account.kind ?? 'login',
+      provider: account.provider ?? '',
+      environment: account.environment ?? 'dev',
       name: account.name,
       username: account.username,
       password: account.password,
+      url: account.url ?? '',
       description: account.description ?? '',
     })
     setFormOpen(true)
@@ -159,9 +209,13 @@ export function DevAccountsPage() {
   async function submitForm(e: React.FormEvent) {
     e.preventDefault()
     const accountPayload = {
+      kind: accountForm.kind,
+      provider: accountForm.provider.trim() || null,
+      environment: accountForm.environment,
       name: accountForm.name.trim(),
       username: accountForm.username.trim(),
       password: accountForm.password,
+      url: accountForm.url.trim() || null,
       description: accountForm.description.trim() || null,
     }
 
@@ -198,8 +252,8 @@ export function DevAccountsPage() {
     }
   }
 
-  function togglePassword(accountId: string) {
-    setVisiblePasswords((prev) => ({ ...prev, [accountId]: !prev[accountId] }))
+  function toggleSecret(accountId: string) {
+    setVisibleSecrets((prev) => ({ ...prev, [accountId]: !prev[accountId] }))
   }
 
   const formBusy = submitting || updateAccountMutation.isPending
@@ -207,22 +261,28 @@ export function DevAccountsPage() {
   return (
     <div>
       <PageHeader
-        title="Dev Accounts"
-        description="Lưu account theo từng project — tên, mail/username, password, mô tả"
+        title="Dev Vault"
+        description="Project-scoped API keys, database users, connection strings, env vars, and service credentials."
         actions={
           <Button onClick={() => openAddForm()}>
-            <Plus className="h-4 w-4" /> New Account
+            <Plus className="h-4 w-4" /> New Secret
           </Button>
         }
       />
+
+      <div className="mb-5 flex flex-wrap gap-2">
+        <Badge variant="secondary">{vaultStats.projectCount} projects</Badge>
+        <Badge variant="secondary">{vaultStats.secretCount} secrets</Badge>
+        <Badge variant="outline">Grouped by project</Badge>
+      </div>
 
       {isLoading ? (
         <Skeleton className="h-64" />
       ) : projects?.length === 0 ? (
         <EmptyState
-          title="Chưa có account nào"
-          description="Thêm account — có thể tạo project mới ngay trong form."
-          action={<Button onClick={() => openAddForm()}>Add Account</Button>}
+          title="No project secrets yet"
+          description="Create a project and store the first API key, database user, or connection string."
+          action={<Button onClick={() => openAddForm()}>Add Secret</Button>}
         />
       ) : (
         <div className="space-y-6">
@@ -238,13 +298,13 @@ export function DevAccountsPage() {
                     <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {project.accounts?.length ?? 0} account
+                    {project.accounts?.length ?? 0} secret
                     {(project.accounts?.length ?? 0) === 1 ? '' : 's'}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <Button variant="outline" size="sm" onClick={() => openAddForm(project.id)}>
-                    <Plus className="h-4 w-4" /> Account
+                    <Plus className="h-4 w-4" /> Secret
                   </Button>
                   <Button variant="ghost" size="icon" onClick={() => openEditProject(project)}>
                     <PencilSimple className="h-4 w-4" />
@@ -253,7 +313,7 @@ export function DevAccountsPage() {
                     variant="ghost"
                     size="icon"
                     onClick={() => {
-                      if (confirm(`Xóa project "${project.name}" và toàn bộ account bên trong?`)) {
+                      if (confirm(`Delete project "${project.name}" and every secret inside it?`)) {
                         deleteProjectMutation.mutate(project.id)
                       }
                     }}
@@ -265,24 +325,28 @@ export function DevAccountsPage() {
               <CardContent>
                 {(project.accounts?.length ?? 0) === 0 ? (
                   <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-                    Chưa có account. Thêm account đầu tiên cho project này.
+                    No secrets yet. Add the first API key, DB user, or connection string for this project.
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {project.accounts?.map((account) => {
-                      const showPassword = visiblePasswords[account.id]
+                      const showSecret = visibleSecrets[account.id]
                       return (
                         <div key={account.id} className="rounded-md border px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 space-y-1">
-                              <div className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <Key className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
                                 <p className="font-medium">{account.name}</p>
+                                <Badge variant="secondary">{credentialLabel(account.kind)}</Badge>
+                                <Badge variant="outline">{environmentLabel(account.environment)}</Badge>
+                                {account.provider && <Badge variant="outline">{account.provider}</Badge>}
                               </div>
-                              <div className="grid gap-1 text-sm text-muted-foreground sm:grid-cols-2">
-                                <div className="flex items-center gap-2">
+
+                              <div className="grid gap-2 text-sm text-muted-foreground lg:grid-cols-2">
+                                <div className="flex min-w-0 items-center gap-2">
                                   <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                    User
+                                    Identifier
                                   </span>
                                   <span className="truncate font-mono text-foreground">
                                     {account.username}
@@ -293,27 +357,27 @@ export function DevAccountsPage() {
                                     size="icon"
                                     className="h-7 w-7"
                                     onClick={() => copyText(account.username)}
-                                    title="Copy username"
+                                    title="Copy identifier"
                                   >
                                     <Copy className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex min-w-0 items-center gap-2">
                                   <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                    Pass
+                                    Secret
                                   </span>
                                   <span className="truncate font-mono text-foreground">
-                                    {showPassword ? account.password : '••••••••'}
+                                    {showSecret ? account.password : '••••••••••••'}
                                   </span>
                                   <Button
                                     type="button"
                                     variant="ghost"
                                     size="icon"
                                     className="h-7 w-7"
-                                    onClick={() => togglePassword(account.id)}
-                                    title={showPassword ? 'Hide password' : 'Show password'}
+                                    onClick={() => toggleSecret(account.id)}
+                                    title={showSecret ? 'Hide secret' : 'Show secret'}
                                   >
-                                    {showPassword ? (
+                                    {showSecret ? (
                                       <EyeSlash className="h-3.5 w-3.5" />
                                     ) : (
                                       <Eye className="h-3.5 w-3.5" />
@@ -325,12 +389,32 @@ export function DevAccountsPage() {
                                     size="icon"
                                     className="h-7 w-7"
                                     onClick={() => copyText(account.password)}
-                                    title="Copy password"
+                                    title="Copy secret"
                                   >
                                     <Copy className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
                               </div>
+
+                              {account.url && (
+                                <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                                  <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
+                                    URL
+                                  </span>
+                                  <span className="truncate font-mono text-foreground">{account.url}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => copyText(account.url ?? '')}
+                                    title="Copy URL"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              )}
+
                               {account.description && (
                                 <p className="text-sm text-muted-foreground">{account.description}</p>
                               )}
@@ -347,7 +431,7 @@ export function DevAccountsPage() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => {
-                                  if (confirm(`Xóa account "${account.name}"?`)) {
+                                  if (confirm(`Delete secret "${account.name}"?`)) {
                                     deleteAccountMutation.mutate({
                                       projectId: project.id,
                                       accountId: account.id,
@@ -377,9 +461,9 @@ export function DevAccountsPage() {
           else setFormOpen(true)
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingAccount ? 'Edit Account' : 'New Account'}</DialogTitle>
+            <DialogTitle>{editingAccount ? 'Edit Secret' : 'New Secret'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={submitForm} className="space-y-4">
             {!editingAccount && (
@@ -388,7 +472,7 @@ export function DevAccountsPage() {
                   <label className="text-sm font-medium">Project</label>
                   <Select value={projectChoice} onValueChange={setProjectChoice}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Chọn project" />
+                      <SelectValue placeholder="Choose project" />
                     </SelectTrigger>
                     <SelectContent>
                       {(projects ?? []).map((project) => (
@@ -396,7 +480,7 @@ export function DevAccountsPage() {
                           {project.name}
                         </SelectItem>
                       ))}
-                      <SelectItem value={NEW_PROJECT_VALUE}>+ Tạo project mới</SelectItem>
+                      <SelectItem value={NEW_PROJECT_VALUE}>+ Create new project</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -404,13 +488,13 @@ export function DevAccountsPage() {
                 {creatingNewProject && (
                   <div className="space-y-3 rounded-md border border-dashed p-3">
                     <Input
-                      placeholder="Tên project mới"
+                      placeholder="New project name"
                       value={projectForm.name}
                       onChange={(e) => setProjectForm((f) => ({ ...f, name: e.target.value }))}
                       required
                     />
                     <Textarea
-                      placeholder="Mô tả project (optional)"
+                      placeholder="Project notes, stack, links, or purpose"
                       value={projectForm.description}
                       onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
                     />
@@ -419,35 +503,89 @@ export function DevAccountsPage() {
               </div>
             )}
 
-            <div className="space-y-3">
-              {!editingAccount && <p className="text-sm font-medium">Account</p>}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Type</label>
+                <Select
+                  value={accountForm.kind}
+                  onValueChange={(value) =>
+                    setAccountForm((form) => ({ ...form, kind: value as DevCredentialKind }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {credentialTypes.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Environment</label>
+                <Select
+                  value={accountForm.environment}
+                  onValueChange={(value) => setAccountForm((form) => ({ ...form, environment: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {environments.map((env) => (
+                      <SelectItem key={env} value={env}>
+                        {environmentLabel(env)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
               <Input
-                placeholder="Tên (vd: Admin, QA Tester)"
+                placeholder="Provider (MongoDB Atlas, Neon, Stripe)"
+                value={accountForm.provider}
+                onChange={(e) => setAccountForm((f) => ({ ...f, provider: e.target.value }))}
+              />
+              <Input
+                placeholder="Console URL or docs URL"
+                value={accountForm.url}
+                onChange={(e) => setAccountForm((f) => ({ ...f, url: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <Input
+                placeholder="Name (Atlas database user, Stripe secret key)"
                 value={accountForm.name}
                 onChange={(e) => setAccountForm((f) => ({ ...f, name: e.target.value }))}
                 required
               />
               <Input
-                placeholder="Mail / username"
+                placeholder="Identifier (username, key id, env var name)"
                 value={accountForm.username}
                 onChange={(e) => setAccountForm((f) => ({ ...f, username: e.target.value }))}
                 required
               />
               <Input
-                placeholder="Password"
+                placeholder="Secret value / password / connection string"
                 value={accountForm.password}
                 onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
                 required
               />
               <Textarea
-                placeholder="Mô tả (optional)"
+                placeholder="Notes: IP allowlist, role, created by, rotation date, usage"
                 value={accountForm.description}
                 onChange={(e) => setAccountForm((f) => ({ ...f, description: e.target.value }))}
               />
             </div>
 
             <Button type="submit" className="w-full" disabled={formBusy}>
-              {editingAccount ? 'Save' : creatingNewProject ? 'Create project & account' : 'Create account'}
+              {editingAccount ? 'Save secret' : creatingNewProject ? 'Create project & secret' : 'Create secret'}
             </Button>
           </form>
         </DialogContent>
@@ -466,13 +604,13 @@ export function DevAccountsPage() {
           </DialogHeader>
           <form onSubmit={submitEditProject} className="space-y-4">
             <Input
-              placeholder="Tên project"
+              placeholder="Project name"
               value={projectForm.name}
               onChange={(e) => setProjectForm((f) => ({ ...f, name: e.target.value }))}
               required
             />
             <Textarea
-              placeholder="Mô tả project (optional)"
+              placeholder="Project notes, stack, links, or purpose"
               value={projectForm.description}
               onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
             />

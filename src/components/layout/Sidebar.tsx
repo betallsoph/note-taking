@@ -26,7 +26,7 @@ const navItems = [
   { to: '/flashcards', label: 'Flashcards', icon: Cards },
   { to: '/reviews', label: 'Reviews', icon: ArrowsClockwise },
   { to: '/interview', label: 'Interview Hub', icon: MicrophoneStage },
-  { to: '/dev-accounts', label: 'Dev Accounts', icon: Key },
+  { to: '/dev-accounts', label: 'Dev Vault', icon: Key },
 ]
 
 export function Sidebar() {
