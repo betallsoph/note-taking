@@ -50,8 +50,8 @@ export function generateUnionFindFind() {
 }
 
 export function generateUnionFindUnion() {
-  let parent = [0, 1, 2, 3, 4, 5, 6, 7]
-  let rank = [1, 1, 1, 1, 1, 1, 1, 1]
+  const parent = [0, 1, 2, 3, 4, 5, 6, 7]
+  const rank = [1, 1, 1, 1, 1, 1, 1, 1]
   const x = 3
   const y = 7
 

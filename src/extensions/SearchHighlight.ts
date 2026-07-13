@@ -108,7 +108,7 @@ export const SearchHighlight = Extension.create({
   },
 
   addProseMirrorPlugins() {
-    const extension = this
+    const { storage } = this
     return [
       new Plugin({
         key: searchHighlightKey,
@@ -118,11 +118,11 @@ export const SearchHighlight = Extension.create({
             const meta = tr.getMeta(searchHighlightKey) as
               | { query: string; activeIndex: number }
               | undefined
-            const query = meta?.query ?? extension.storage.query
-            const activeIndex = meta?.activeIndex ?? extension.storage.activeIndex
+            const query = meta?.query ?? storage.query
+            const activeIndex = meta?.activeIndex ?? storage.activeIndex
             if (!query.trim()) return DecorationSet.empty
             const matches = findMatches(newState.doc, query)
-            extension.storage.matchCount = matches.length
+            storage.matchCount = matches.length
             const decorations = matches.map((match, i) =>
               Decoration.inline(match.from, match.to, {
                 class: i === activeIndex ? 'editor-search-match editor-search-active' : 'editor-search-match',
