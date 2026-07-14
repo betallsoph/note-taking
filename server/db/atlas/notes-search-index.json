@@ -1,0 +1,31 @@
+{
+  "name": "notes_search",
+  "type": "search",
+  "definition": {
+    "mappings": {
+      "dynamic": false,
+      "fields": {
+        "userId": {
+          "type": "token"
+        },
+        "title": [
+          {
+            "type": "string",
+            "analyzer": "lucene.standard"
+          },
+          {
+            "type": "autocomplete",
+            "tokenization": "edgeGram",
+            "minGrams": 2,
+            "maxGrams": 15,
+            "foldDiacritics": true
+          }
+        ],
+        "markdownText": {
+          "type": "string",
+          "analyzer": "lucene.standard"
+        }
+      }
+    }
+  }
+}

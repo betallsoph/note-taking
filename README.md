@@ -101,17 +101,20 @@ server/
 - Feature-based folder structure for scalability
 - Mock auth middleware injects a demo user; swap for JWT or session auth when needed
 - Routes use Neon/Drizzle when `DATABASE_URL` exists and mock data otherwise
+- Free-form **Notes** prefer MongoDB Atlas when `MONGODB_URI` is set (Neon/mock otherwise)
 - Dev Vault groups credentials by project and can encrypt secrets with `SECRET_ENCRYPTION_KEY`
 - All user-owned records are scoped by `userId`
 - All DSA visualizations are generated from discrete state transitions
+- Deploy target is **serverless**: Vercel functions + Neon (+ optional Atlas)
 
-## Deploy On Vercel Free + Neon Free
+## Deploy On Vercel Free + Neon Free (+ optional Atlas)
 
 This repo is ready to run without a VPS:
 
 - Vercel serves the Vite app from `dist`.
 - Vercel serverless functions route `/api/*` to the Express app through `api/[...path].ts`.
-- Neon stores the Postgres data when `DATABASE_URL` is configured.
+- Neon stores relational Postgres data when `DATABASE_URL` is configured.
+- MongoDB Atlas can store free-form Notes (+ Atlas Search) when `MONGODB_URI` is configured.
 
 ### Vercel Environment Variables
 
@@ -119,12 +122,16 @@ Set these in Vercel Project Settings:
 
 ```bash
 DATABASE_URL="postgresql://...-pooler...neon.tech/...?...sslmode=require"
+MONGODB_URI="mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
+MONGODB_DB_NAME="cs_hub"
 SECRET_ENCRYPTION_KEY="replace-with-a-long-random-value"
 APP_ACCESS_TOKEN="replace-with-another-long-random-value"
 NODE_ENV="production"
 ```
 
 Use the Neon pooled connection string for serverless deployments. Keep `SECRET_ENCRYPTION_KEY` stable after you start creating real Dev Vault records, because changing it will make previously encrypted secrets unreadable. Set `APP_ACCESS_TOKEN` on Vercel to protect the app with a simple personal unlock screen; leave it empty only for local development or non-sensitive demos.
+
+`MONGODB_URI` is optional. Without it, Notes stay on Neon/mock. With it, Notes switch to Atlas automatically (`GET /api/health` shows `notesStore: "atlas"`).
 
 ### First Database Setup
 
@@ -141,6 +148,60 @@ DATABASE_URL="postgresql://...neon..." npm run db:seed
 ```
 
 Do not cron-ping Neon just to keep it warm on the free tier. Let it go inactive; the first request after sleep may be slower, which is fine for a personal knowledge app.
+
+## MongoDB Atlas Setup (Notes)
+
+Yes — this app is serverless-friendly. Atlas M0 free tier works with Vercel if you reuse a cached Mongo client (already wired in `server/db/mongo.ts`).
+
+### 1. Create the cluster
+
+1. Go to [https://cloud.mongodb.com](https://cloud.mongodb.com) and sign up / log in.
+2. Create a project (e.g. `cs-hub`).
+3. Build a cluster → choose **M0 Free**.
+4. Pick a cloud region close to your Vercel region.
+5. Create a database user (username + password). Save the password.
+6. Network Access → **Add IP Address**:
+   - Local: your current IP
+   - Vercel / easy start: `0.0.0.0/0` (allow from anywhere). Tighten later if you want.
+7. Database → **Connect** → **Drivers** → copy the `mongodb+srv://...` URI.
+8. Replace `<password>` in the URI (URL-encode special characters).
+
+### 2. Put the URI in env
+
+Local `.env`:
+
+```bash
+MONGODB_URI="mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
+MONGODB_DB_NAME="cs_hub"
+```
+
+Also add the same vars in Vercel Project Settings.
+
+### 3. Seed + verify
+
+```bash
+npm run db:seed:mongo
+curl http://localhost:3001/api/health
+# expect: "mongo":"atlas", "notesStore":"atlas"
+```
+
+### 4. Create Atlas Search index (fuzzy notes)
+
+1. Atlas → your cluster → **Search** → **Create Search Index**.
+2. Choose JSON editor.
+3. Database: `cs_hub` (or your `MONGODB_DB_NAME`), collection: `notes`.
+4. Paste the contents of `server/db/atlas/notes-search-index.json` (`definition` object / name `notes_search`).
+5. Wait until status is Active.
+
+Until the Search index exists, note search still works via regex fallback. After it is Active, list/search uses `$search` with fuzzy/autocomplete.
+
+### Notes storage priority
+
+1. `MONGODB_URI` set → Atlas  
+2. else `DATABASE_URL` set → Neon  
+3. else → in-memory mock  
+
+Reminders / Knowledge / Flashcards stay on Neon. Only free-form Notes move to Atlas.
 
 ## Claude Desktop MCP
 

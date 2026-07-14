@@ -8,25 +8,37 @@ import {
   listNotes,
   updateNote,
 } from '../db/repositories.js'
+import {
+  createMongoNote,
+  deleteMongoNote,
+  getMongoNote,
+  listMongoNotes,
+  updateMongoNote,
+} from '../db/mongo-notes.js'
+import { isMongoEnabled } from '../db/mongo.js'
 import { queryParam } from './params.js'
 
 const router = Router()
 
 router.get('/', async (req, res) => {
+  const filters = {
+    search: queryParam(req.query.search),
+    pinned: queryParam(req.query.pinned),
+  }
+
+  // Prefer Atlas for free-form notes when configured.
+  if (isMongoEnabled()) {
+    return res.json(await listMongoNotes(req.user.id, filters))
+  }
+
   if (isDatabaseEnabled()) {
-    const items = await listNotes(req.user.id, {
-      search: queryParam(req.query.search),
-      pinned: queryParam(req.query.pinned),
-    })
-    return res.json(items)
+    return res.json(await listNotes(req.user.id, filters))
   }
 
   let items = mockStore.notes.filter((n) => n.userId === req.user.id)
-  const search = queryParam(req.query.search)
-  const pinned = queryParam(req.query.pinned)
-  if (pinned === 'true') items = items.filter((n) => n.isPinned)
-  if (search) {
-    const q = search.toLowerCase()
+  if (filters.pinned === 'true') items = items.filter((n) => n.isPinned)
+  if (filters.search) {
+    const q = filters.search.toLowerCase()
     items = items.filter((n) => {
       const markdown =
         typeof n.content.markdown === 'string' ? n.content.markdown.toLowerCase() : ''
@@ -41,6 +53,12 @@ router.get('/', async (req, res) => {
 })
 
 router.get('/:id', async (req, res) => {
+  if (isMongoEnabled()) {
+    const note = await getMongoNote(req.user.id, req.params.id)
+    if (!note) return res.status(404).json({ error: 'Not found' })
+    return res.json(note)
+  }
+
   if (isDatabaseEnabled()) {
     const note = await getNote(req.user.id, req.params.id)
     if (!note) return res.status(404).json({ error: 'Not found' })
@@ -53,6 +71,11 @@ router.get('/:id', async (req, res) => {
 })
 
 router.post('/', async (req, res) => {
+  if (isMongoEnabled()) {
+    const note = await createMongoNote(req.user.id, req.body)
+    return res.status(201).json(note)
+  }
+
   if (isDatabaseEnabled()) {
     const note = await createNote(req.user.id, req.body)
     return res.status(201).json(note)
@@ -76,6 +99,12 @@ router.post('/', async (req, res) => {
 })
 
 router.put('/:id', async (req, res) => {
+  if (isMongoEnabled()) {
+    const note = await updateMongoNote(req.user.id, req.params.id, req.body)
+    if (!note) return res.status(404).json({ error: 'Not found' })
+    return res.json(note)
+  }
+
   if (isDatabaseEnabled()) {
     const note = await updateNote(req.user.id, req.params.id, req.body)
     if (!note) return res.status(404).json({ error: 'Not found' })
@@ -101,6 +130,12 @@ router.put('/:id', async (req, res) => {
 })
 
 router.delete('/:id', async (req, res) => {
+  if (isMongoEnabled()) {
+    const deleted = await deleteMongoNote(req.user.id, req.params.id)
+    if (!deleted) return res.status(404).json({ error: 'Not found' })
+    return res.status(204).send()
+  }
+
   if (isDatabaseEnabled()) {
     const deleted = await deleteNote(req.user.id, req.params.id)
     if (!deleted) return res.status(404).json({ error: 'Not found' })
