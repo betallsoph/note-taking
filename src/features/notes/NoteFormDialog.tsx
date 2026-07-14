@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { api } from '@/services/api'
+import { api, ApiError } from '@/services/api'
 
 interface Props {
   open: boolean
@@ -28,7 +28,7 @@ export function NoteFormDialog({ open, onOpenChange }: Props) {
       navigate(`/notes/${note.id}`)
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Could not create note')
+      setError(err instanceof ApiError ? err.message : 'Could not create note')
     },
   })
 

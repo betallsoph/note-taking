@@ -206,7 +206,8 @@ export async function updateMongoNote(
     { $set: updates },
     { returnDocument: 'after' },
   )
-  return result ? serializeMongoNote(result) : null
+  if (!result) return null
+  return serializeMongoNote(result)
 }
 
 export async function deleteMongoNote(userId: string, noteId: string) {

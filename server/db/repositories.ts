@@ -1356,14 +1356,13 @@ export async function deleteReminder(userId: string, reminderId: string) {
 
 export async function searchEverything(userId: string, query: string) {
   const q = query.toLowerCase()
-  const { isMongoEnabled } = await import('./mongo.js')
-  const { listMongoNotes } = await import('./mongo-notes.js')
+  const { listNotesAnywhere } = await import('./notes-store.js')
 
   const [articles, problems, flashcards, notes] = await Promise.all([
     listArticles(userId, { search: q }),
     listProblems(userId, { search: q }),
     listFlashcards(userId, { search: q }),
-    isMongoEnabled() ? listMongoNotes(userId, { search: q }) : listNotes(userId, { search: q }),
+    listNotesAnywhere(userId, { search: q }),
   ])
   return { articles, problems, flashcards, notes }
 }

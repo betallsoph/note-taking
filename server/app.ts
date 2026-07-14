@@ -5,7 +5,7 @@ import { MOCK_USER, isAccessTokenRequired, mockAuth, requireAccessToken } from '
 import { mockStore } from './mock-store.js'
 import { databaseMode } from './db/index.js'
 import { isMongoEnabled, mongoMode } from './db/mongo.js'
-import { ensureMongoNotesIndexes, countMongoNotes } from './db/mongo-notes.js'
+import { countNotesAnywhere, warmMongoNotesIndexes, activeNotesStore } from './db/notes-store.js'
 import { ensureUser, getDashboardStats, isDatabaseEnabled } from './db/repositories.js'
 import articlesRouter from './routes/articles.js'
 import categoriesRouter from './routes/categories.js'
@@ -20,10 +20,11 @@ import simulationsRouter from './routes/simulations.js'
 import devAccountsRouter from './routes/dev-accounts.js'
 
 const app = express()
-const ready = Promise.all([
-  isDatabaseEnabled() ? ensureUser(MOCK_USER) : Promise.resolve(),
-  isMongoEnabled() ? ensureMongoNotesIndexes() : Promise.resolve(),
-])
+const ready = isDatabaseEnabled() ? ensureUser(MOCK_USER) : Promise.resolve()
+
+if (isMongoEnabled()) {
+  warmMongoNotesIndexes()
+}
 
 app.use(cors())
 app.use(express.json())
@@ -37,12 +38,13 @@ app.use(async (_req, _res, next) => {
 })
 app.use(mockAuth)
 
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', async (_req, res) => {
+  const notesStore = await activeNotesStore()
   res.json({
     status: 'ok',
     mode: databaseMode,
     mongo: mongoMode,
-    notesStore: isMongoEnabled() ? 'atlas' : databaseMode === 'neon' ? 'neon' : 'mock',
+    notesStore,
     accessTokenRequired: isAccessTokenRequired(),
   })
 })
@@ -52,20 +54,20 @@ app.get('/api/auth/me', (req, res) => {
   res.json(req.user)
 })
 
-app.get('/api/dashboard', async (req, res) => {
-  if (isDatabaseEnabled()) {
-    const stats = await getDashboardStats(req.user.id)
-    if (isMongoEnabled()) {
-      stats.totalNotes = await countMongoNotes(req.user.id)
+app.get('/api/dashboard', async (req, res, next) => {
+  try {
+    if (isDatabaseEnabled()) {
+      const stats = await getDashboardStats(req.user.id)
+      stats.totalNotes = await countNotesAnywhere(req.user.id)
+      return res.json(stats)
     }
-    return res.json(stats)
-  }
 
-  const stats = mockStore.getDashboardStats(req.user.id)
-  if (isMongoEnabled()) {
-    stats.totalNotes = await countMongoNotes(req.user.id)
+    const stats = mockStore.getDashboardStats(req.user.id)
+    stats.totalNotes = await countNotesAnywhere(req.user.id)
+    res.json(stats)
+  } catch (error) {
+    next(error)
   }
-  res.json(stats)
 })
 
 app.use('/api/articles', articlesRouter)
@@ -82,7 +84,8 @@ app.use('/api/dev-accounts', devAccountsRouter)
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(error)
-  res.status(500).json({ error: 'Internal server error' })
+  const message = error instanceof Error ? error.message : 'Internal server error'
+  res.status(500).json({ error: message })
 })
 
 export default app
