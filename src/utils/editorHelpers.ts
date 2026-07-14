@@ -27,7 +27,39 @@ import { WarningBlock } from '@/extensions/WarningBlock'
 import { InfoBlock } from '@/extensions/InfoBlock'
 import { SlashCommand } from '@/extensions/SlashCommand'
 import { SearchHighlight } from '@/extensions/SearchHighlight'
+import { preprocessMarkdownForEditor } from '@/utils/markdown'
 import { cn } from '@/lib/utils'
+
+const MARKDOWN_EXTENSIONS = ['.md', '.markdown', '.mdown', '.mkd'] as const
+
+/** Detect a markdown file by extension or MIME type. */
+export function isMarkdownFile(file: File): boolean {
+  const name = file.name.toLowerCase()
+  if (MARKDOWN_EXTENSIONS.some((ext) => name.endsWith(ext))) return true
+  return file.type === 'text/markdown' || file.type === 'text/x-markdown'
+}
+
+/** Insert markdown text as rich content at the current selection (or a position). */
+export function insertMarkdownContent(
+  editor: Editor,
+  markdown: string,
+  position?: number,
+) {
+  const processed = preprocessMarkdownForEditor(markdown)
+  if (!processed.trim()) return
+
+  if (typeof position === 'number') {
+    editor.chain().focus().insertContentAt(position, processed).run()
+    return
+  }
+
+  editor.chain().focus().insertContent(processed).run()
+}
+
+function findMarkdownFile(files: FileList | File[] | null | undefined): File | undefined {
+  if (!files?.length) return undefined
+  return Array.from(files).find(isMarkdownFile)
+}
 
 const CustomUnderline = Underline.extend({
   addKeyboardShortcuts() {
@@ -154,5 +186,50 @@ export function handleEditorImagePaste(
       return true
     }
   }
+  return false
+}
+
+/** Drop a .md file into the editor → parse markdown into rich text. */
+export function handleEditorMarkdownDrop(editor: Editor, event: DragEvent): boolean {
+  const mdFile = findMarkdownFile(event.dataTransfer?.files)
+  if (!mdFile) return false
+
+  event.preventDefault()
+  const dropPos = editor.view.posAtCoords({
+    left: event.clientX,
+    top: event.clientY,
+  })?.pos
+
+  void mdFile.text().then((text) => {
+    insertMarkdownContent(editor, text, dropPos)
+  })
+  return true
+}
+
+/** Paste a .md file from the clipboard → parse markdown into rich text. */
+export function handleEditorMarkdownPaste(editor: Editor, event: ClipboardEvent): boolean {
+  const fromFiles = findMarkdownFile(event.clipboardData?.files)
+  if (fromFiles) {
+    event.preventDefault()
+    void fromFiles.text().then((text) => {
+      insertMarkdownContent(editor, text)
+    })
+    return true
+  }
+
+  const items = event.clipboardData?.items
+  if (!items) return false
+
+  for (const item of items) {
+    if (item.kind !== 'file') continue
+    const file = item.getAsFile()
+    if (!file || !isMarkdownFile(file)) continue
+    event.preventDefault()
+    void file.text().then((text) => {
+      insertMarkdownContent(editor, text)
+    })
+    return true
+  }
+
   return false
 }

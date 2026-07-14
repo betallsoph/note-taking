@@ -10,6 +10,8 @@ import {
   editorWrapperClass,
   handleEditorImageDrop,
   handleEditorImagePaste,
+  handleEditorMarkdownDrop,
+  handleEditorMarkdownPaste,
 } from '@/utils/editorHelpers'
 import { getEditorMarkdown, preprocessMarkdownForEditor } from '@/utils/markdown'
 import { useEditorAutosave } from '@/hooks/useEditorAutosave'
@@ -83,12 +85,14 @@ export function RichTextEditor({
       handleDrop: (_view, event) => {
         const ed = editorRef.current
         if (!editable || !ed) return false
-        return handleEditorImageDrop(ed, event, onImageUpload)
+        if (handleEditorImageDrop(ed, event, onImageUpload)) return true
+        return handleEditorMarkdownDrop(ed, event)
       },
       handlePaste: (_view, event) => {
         const ed = editorRef.current
         if (!editable || !ed) return false
-        return handleEditorImagePaste(ed, event, onImageUpload)
+        if (handleEditorImagePaste(ed, event, onImageUpload)) return true
+        return handleEditorMarkdownPaste(ed, event)
       },
     },
   })
