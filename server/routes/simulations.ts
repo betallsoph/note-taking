@@ -69,7 +69,13 @@ router.get('/search', async (req, res) => {
       f.userId === req.user.id &&
       (f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q)),
   )
-  res.json({ articles, problems, flashcards })
+  const notes = mockStore.notes.filter((n) => {
+    if (n.userId !== req.user.id) return false
+    const markdown =
+      typeof n.content.markdown === 'string' ? n.content.markdown.toLowerCase() : ''
+    return n.title.toLowerCase().includes(q) || markdown.includes(q)
+  })
+  res.json({ articles, problems, flashcards, notes })
 })
 
 export default router

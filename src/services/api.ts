@@ -142,6 +142,34 @@ export const api = {
     deleteItem: (roadmapId: string, itemId: string) =>
       request<void>(`/roadmaps/${roadmapId}/items/${itemId}`, { method: 'DELETE' }),
   },
+  notes: {
+    list: (params?: Record<string, string>) => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+      return request<import('@/types').Note[]>(`/notes${qs}`)
+    },
+    get: (id: string) => request<import('@/types').Note>(`/notes/${id}`),
+    create: (data: Partial<import('@/types').Note>) =>
+      request<import('@/types').Note>('/notes', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<import('@/types').Note>) =>
+      request<import('@/types').Note>(`/notes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => request<void>(`/notes/${id}`, { method: 'DELETE' }),
+  },
+  reminders: {
+    list: (params?: Record<string, string>) => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+      return request<import('@/types').Reminder[]>(`/reminders${qs}`)
+    },
+    due: () => request<import('@/types').Reminder[]>('/reminders/due'),
+    get: (id: string) => request<import('@/types').Reminder>(`/reminders/${id}`),
+    create: (data: Partial<import('@/types').Reminder>) =>
+      request<import('@/types').Reminder>('/reminders', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<import('@/types').Reminder>) =>
+      request<import('@/types').Reminder>(`/reminders/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) => request<void>(`/reminders/${id}`, { method: 'DELETE' }),
+  },
   devAccounts: {
     listProjects: () => request<import('@/types').DevProject[]>('/dev-accounts/projects'),
     createProject: (data: Partial<import('@/types').DevProject>) =>

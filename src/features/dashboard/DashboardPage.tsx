@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { BookOpen, Code, Cards, MapTrifold, Fire, Clock } from '@phosphor-icons/react'
+import { BookOpen, Code, Cards, MapTrifold, Fire, Clock, NotePencil, Bell } from '@phosphor-icons/react'
 import { api } from '@/services/api'
 import { PageHeader } from '@/components/ui/misc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -29,9 +29,11 @@ export function DashboardPage() {
 
   const stats = [
     { label: 'Articles', value: data?.totalArticles ?? 0, icon: BookOpen, href: '/knowledge' },
+    { label: 'Notes', value: data?.totalNotes ?? 0, icon: NotePencil, href: '/notes' },
     { label: 'Problems', value: data?.totalProblems ?? 0, icon: Code, href: '/problems' },
     { label: 'Flashcards', value: data?.totalFlashcards ?? 0, icon: Cards, href: '/flashcards' },
     { label: 'Roadmaps', value: data?.totalRoadmaps ?? 0, icon: MapTrifold, href: '/roadmaps' },
+    { label: 'Reminders due', value: data?.remindersDueToday ?? 0, icon: Bell, href: '/reminders' },
   ]
 
   return (
@@ -41,7 +43,7 @@ export function DashboardPage() {
         description="Your personal computer science learning hub"
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map(({ label, value, icon: Icon, href }) => (
           <Link key={label} to={href}>
             <Card className="transition-colors hover:bg-accent/50">
@@ -57,7 +59,7 @@ export function DashboardPage() {
         ))}
       </div>
 
-      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -82,6 +84,21 @@ export function DashboardPage() {
             <p className="text-4xl font-semibold">{data?.reviewDueToday ?? 0}</p>
             <Link to="/reviews" className="text-sm text-primary hover:underline">
               Start reviewing
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Bell className="h-4 w-4 text-rose-500" weight="duotone" />
+              Reminders Due
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold">{data?.remindersDueToday ?? 0}</p>
+            <Link to="/reminders" className="text-sm text-primary hover:underline">
+              Open reminders
             </Link>
           </CardContent>
         </Card>

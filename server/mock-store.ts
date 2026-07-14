@@ -154,14 +154,38 @@ export interface DevAccount {
   updatedAt: string
 }
 
+export interface Note {
+  id: string
+  userId: string
+  title: string
+  content: Record<string, unknown>
+  isPinned: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Reminder {
+  id: string
+  userId: string
+  title: string
+  body: string | null
+  remindAt: string
+  isCompleted: boolean
+  completedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface DashboardStats {
   totalArticles: number
   totalProblems: number
   totalFlashcards: number
   totalRoadmaps: number
+  totalNotes: number
   topicsCompleted: number
   learningStreak: number
   reviewDueToday: number
+  remindersDueToday: number
   recentlyUpdatedNotes: Article[]
 }
 
@@ -190,6 +214,8 @@ class MockStore {
   flashcards: Flashcard[] = []
   roadmaps: Roadmap[] = []
   roadmapItems: RoadmapItem[] = []
+  notes: Note[] = []
+  reminders: Reminder[] = []
   devProjects: DevProject[] = []
   devAccounts: DevAccount[] = []
 
@@ -390,6 +416,70 @@ class MockStore {
       { id: id(), roadmapId, title: 'System Design Fundamentals', description: null, status: 'not_started', orderIndex: 2, createdAt: now(), updatedAt: now() },
     ]
 
+    this.notes = [
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Random thoughts',
+        content: {
+          markdown:
+            'Capture anything here — meeting notes, ideas, grocery lists, whatever.\n\n- Keep it messy\n- Pin the useful ones\n- No categories required',
+        },
+        isPinned: true,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Weekend reading list',
+        content: {
+          markdown: '1. Designing Data-Intensive Applications ch.3\n2. PostgreSQL MVCC deep dive\n3. Sketch a notification system',
+        },
+        isPinned: false,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
+    const inTwoHours = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    this.reminders = [
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Review flashcards',
+        body: 'Do a quick OS + DB pass before bed',
+        remindAt: inTwoHours,
+        isCompleted: false,
+        completedAt: null,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Submit internship application',
+        body: null,
+        remindAt: yesterday,
+        isCompleted: false,
+        completedAt: null,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Buy new notebook',
+        body: 'Done — got the dotted one',
+        remindAt: yesterday,
+        isCompleted: true,
+        completedAt: now(),
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
     const projectId = id()
     this.devProjects = [
       {
@@ -460,18 +550,25 @@ class MockStore {
 
   getDashboardStats(userId: string): DashboardStats {
     const userArticles = this.articles.filter((a) => a.userId === userId && !a.isArchived)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const endOfToday = new Date()
+    endOfToday.setHours(23, 59, 59, 999)
 
     return {
       totalArticles: userArticles.length,
       totalProblems: this.problems.filter((p) => p.userId === userId).length,
       totalFlashcards: this.flashcards.filter((f) => f.userId === userId).length,
       totalRoadmaps: this.roadmaps.filter((r) => r.userId === userId).length,
+      totalNotes: this.notes.filter((n) => n.userId === userId).length,
       topicsCompleted: userArticles.filter((a) => a.status === 'completed').length,
       learningStreak: 7,
       reviewDueToday: this.flashcards.filter(
         (f) => f.userId === userId && f.nextReviewAt && new Date(f.nextReviewAt) <= new Date(),
+      ).length,
+      remindersDueToday: this.reminders.filter(
+        (r) =>
+          r.userId === userId &&
+          !r.isCompleted &&
+          new Date(r.remindAt) <= endOfToday,
       ).length,
       recentlyUpdatedNotes: [...userArticles]
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())

@@ -9,6 +9,8 @@ import {
   ArrowsClockwise,
   MicrophoneStage,
   Key,
+  NotePencil,
+  Bell,
   SidebarSimple,
   Moon,
   Sun,
@@ -20,6 +22,8 @@ import { Button } from '@/components/ui/button'
 const navItems = [
   { to: '/', label: 'Dashboard', icon: House },
   { to: '/knowledge', label: 'Knowledge Base', icon: BookOpen },
+  { to: '/notes', label: 'Notes', icon: NotePencil },
+  { to: '/reminders', label: 'Reminders', icon: Bell },
   { to: '/dsa', label: 'DSA Visualizer', icon: Graph },
   { to: '/problems', label: 'Problems', icon: Code },
   { to: '/roadmaps', label: 'Roadmaps', icon: MapTrifold },

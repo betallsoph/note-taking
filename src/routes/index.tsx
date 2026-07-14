@@ -11,6 +11,9 @@ import { RoadmapsPage } from '@/features/roadmaps/RoadmapsPage'
 import { ReviewsPage } from '@/features/reviews/ReviewsPage'
 import { InterviewHubPage } from '@/features/interview/InterviewHubPage'
 import { DevAccountsPage } from '@/features/dev-accounts/DevAccountsPage'
+import { NotesPage } from '@/features/notes/NotesPage'
+import { NoteDetailPage } from '@/features/notes/NoteDetailPage'
+import { RemindersPage } from '@/features/reminders/RemindersPage'
 
 export const router = createBrowserRouter([
   {
@@ -20,6 +23,9 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'knowledge', element: <KnowledgePage /> },
       { path: 'knowledge/:id', element: <ArticleDetailPage /> },
+      { path: 'notes', element: <NotesPage /> },
+      { path: 'notes/:id', element: <NoteDetailPage /> },
+      { path: 'reminders', element: <RemindersPage /> },
       { path: 'dsa', element: <DsaVisualizerPage /> },
       { path: 'problems', element: <ProblemsPage /> },
       { path: 'problems/:id', element: <ProblemDetailPage /> },

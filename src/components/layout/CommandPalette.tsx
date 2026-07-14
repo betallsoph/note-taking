@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Command } from 'cmdk'
-import { BookOpen, Code, Cards, Key } from '@phosphor-icons/react'
+import { BookOpen, Code, Cards, Key, NotePencil, Bell } from '@phosphor-icons/react'
 import { useUIStore } from '@/store'
 import { api } from '@/services/api'
 import type { SearchResults } from '@/types'
@@ -56,6 +56,12 @@ export function CommandPalette() {
                 <CommandItem icon={BookOpen} onSelect={() => go('/knowledge')}>
                   Knowledge Base
                 </CommandItem>
+                <CommandItem icon={NotePencil} onSelect={() => go('/notes')}>
+                  Notes
+                </CommandItem>
+                <CommandItem icon={Bell} onSelect={() => go('/reminders')}>
+                  Reminders
+                </CommandItem>
                 <CommandItem icon={Code} onSelect={() => go('/problems')}>
                   Problems
                 </CommandItem>
@@ -67,7 +73,12 @@ export function CommandPalette() {
                 </CommandItem>
               </Command.Group>
             )}
-            {results && results.articles.length === 0 && results.problems.length === 0 && results.flashcards.length === 0 && query && (
+            {results &&
+              results.articles.length === 0 &&
+              results.problems.length === 0 &&
+              results.flashcards.length === 0 &&
+              (results.notes?.length ?? 0) === 0 &&
+              query && (
               <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
                 No results found.
               </Command.Empty>
@@ -77,6 +88,15 @@ export function CommandPalette() {
                 {results.articles.map((a) => (
                   <CommandItem key={a.id} icon={BookOpen} onSelect={() => go(`/knowledge/${a.id}`)}>
                     {a.title}
+                  </CommandItem>
+                ))}
+              </Command.Group>
+            )}
+            {results && (results.notes?.length ?? 0) > 0 && (
+              <Command.Group heading="Notes">
+                {results.notes.map((n) => (
+                  <CommandItem key={n.id} icon={NotePencil} onSelect={() => go(`/notes/${n.id}`)}>
+                    {n.title || 'Untitled'}
                   </CommandItem>
                 ))}
               </Command.Group>

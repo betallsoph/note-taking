@@ -260,6 +260,43 @@ export const roadmapItems = pgTable('roadmap_items', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const notes = pgTable(
+  'notes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('Untitled'),
+    content: jsonb('content').notNull().default({}),
+    isPinned: boolean('is_pinned').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('notes_user_id_idx').on(table.userId)],
+)
+
+export const reminders = pgTable(
+  'reminders',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    body: text('body'),
+    remindAt: timestamp('remind_at', { withTimezone: true }).notNull(),
+    isCompleted: boolean('is_completed').notNull().default(false),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('reminders_user_id_idx').on(table.userId),
+    index('reminders_remind_at_idx').on(table.remindAt),
+  ],
+)
+
 export const simulations = pgTable('simulations', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id')
@@ -327,8 +364,18 @@ export const usersRelations = relations(users, ({ many }) => ({
   flashcards: many(flashcards),
   roadmaps: many(roadmaps),
   reviews: many(reviews),
+  notes: many(notes),
+  reminders: many(reminders),
   simulations: many(simulations),
   devProjects: many(devProjects),
+}))
+
+export const notesRelations = relations(notes, ({ one }) => ({
+  user: one(users, { fields: [notes.userId], references: [users.id] }),
+}))
+
+export const remindersRelations = relations(reminders, ({ one }) => ({
+  user: one(users, { fields: [reminders.userId], references: [users.id] }),
 }))
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
