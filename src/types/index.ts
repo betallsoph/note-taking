@@ -153,6 +153,41 @@ export interface DevAccount {
   updatedAt: string
 }
 
+export type PersonalAccountCategory =
+  | 'email'
+  | 'social'
+  | 'school'
+  | 'streaming'
+  | 'shopping'
+  | 'finance'
+  | 'other'
+
+export interface PersonalAccount {
+  id: string
+  userId: string
+  category: PersonalAccountCategory
+  name: string
+  username: string
+  password: string
+  url: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export const PERSONAL_ACCOUNT_CATEGORIES: Array<{
+  value: PersonalAccountCategory
+  label: string
+}> = [
+  { value: 'email', label: 'Email' },
+  { value: 'social', label: 'Social' },
+  { value: 'school', label: 'School' },
+  { value: 'streaming', label: 'Streaming' },
+  { value: 'shopping', label: 'Shopping' },
+  { value: 'finance', label: 'Finance' },
+  { value: 'other', label: 'Other' },
+]
+
 export interface DevProject {
   id: string
   userId: string

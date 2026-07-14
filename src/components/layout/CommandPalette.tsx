@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Command } from 'cmdk'
-import { BookOpen, Code, Cards, Key, NotePencil, Bell } from '@phosphor-icons/react'
+import { BookOpen, Code, Cards, Key, NotePencil, Bell, IdentificationCard } from '@phosphor-icons/react'
 import { useUIStore } from '@/store'
 import { api } from '@/services/api'
 import type { SearchResults } from '@/types'
@@ -61,6 +61,9 @@ export function CommandPalette() {
                 </CommandItem>
                 <CommandItem icon={Bell} onSelect={() => go('/reminders')}>
                   Reminders
+                </CommandItem>
+                <CommandItem icon={IdentificationCard} onSelect={() => go('/accounts')}>
+                  Accounts
                 </CommandItem>
                 <CommandItem icon={Code} onSelect={() => go('/problems')}>
                   Problems

@@ -308,6 +308,28 @@ export const simulations = pgTable('simulations', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const personalAccounts = pgTable(
+  'personal_accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    category: text('category').notNull().default('other'),
+    name: text('name').notNull(),
+    username: text('username').notNull(),
+    password: text('password').notNull(),
+    url: text('url'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('personal_accounts_user_id_idx').on(table.userId),
+    index('personal_accounts_category_idx').on(table.category),
+  ],
+)
+
 export const devProjects = pgTable(
   'dev_projects',
   {
@@ -366,6 +388,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   reviews: many(reviews),
   notes: many(notes),
   reminders: many(reminders),
+  personalAccounts: many(personalAccounts),
   simulations: many(simulations),
   devProjects: many(devProjects),
 }))
@@ -376,6 +399,10 @@ export const notesRelations = relations(notes, ({ one }) => ({
 
 export const remindersRelations = relations(reminders, ({ one }) => ({
   user: one(users, { fields: [reminders.userId], references: [users.id] }),
+}))
+
+export const personalAccountsRelations = relations(personalAccounts, ({ one }) => ({
+  user: one(users, { fields: [personalAccounts.userId], references: [users.id] }),
 }))
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({

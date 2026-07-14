@@ -154,6 +154,28 @@ export interface DevAccount {
   updatedAt: string
 }
 
+export type PersonalAccountCategory =
+  | 'email'
+  | 'social'
+  | 'school'
+  | 'streaming'
+  | 'shopping'
+  | 'finance'
+  | 'other'
+
+export interface PersonalAccount {
+  id: string
+  userId: string
+  category: PersonalAccountCategory
+  name: string
+  username: string
+  password: string
+  url: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Note {
   id: string
   userId: string
@@ -216,6 +238,7 @@ class MockStore {
   roadmapItems: RoadmapItem[] = []
   notes: Note[] = []
   reminders: Reminder[] = []
+  personalAccounts: PersonalAccount[] = []
   devProjects: DevProject[] = []
   devAccounts: DevAccount[] = []
 
@@ -437,6 +460,33 @@ class MockStore {
           markdown: '1. Designing Data-Intensive Applications ch.3\n2. PostgreSQL MVCC deep dive\n3. Sketch a notification system',
         },
         isPinned: false,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
+    this.personalAccounts = [
+      {
+        id: id(),
+        userId: user.id,
+        category: 'email',
+        name: 'Personal Gmail',
+        username: 'learner@gmail.com',
+        password: 'example-mail-pass',
+        url: 'https://mail.google.com',
+        notes: 'Recovery phone on file',
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        category: 'school',
+        name: 'University portal',
+        username: '2212662',
+        password: 'example-school-pass',
+        url: 'https://portal.example.edu',
+        notes: null,
         createdAt: now(),
         updatedAt: now(),
       },

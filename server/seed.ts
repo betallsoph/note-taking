@@ -202,6 +202,27 @@ async function seed() {
     },
   ])
 
+  await db.insert(schema.personalAccounts).values([
+    {
+      userId: MOCK_USER_ID,
+      category: 'email',
+      name: 'Personal Gmail',
+      username: 'learner@gmail.com',
+      password: 'example-mail-pass',
+      url: 'https://mail.google.com',
+      notes: 'Recovery phone on file',
+    },
+    {
+      userId: MOCK_USER_ID,
+      category: 'school',
+      name: 'University portal',
+      username: '2212662',
+      password: 'example-school-pass',
+      url: 'https://portal.example.edu',
+      notes: null,
+    },
+  ])
+
   console.log('Seed complete!')
   await client.end()
 }

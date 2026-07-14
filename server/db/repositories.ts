@@ -17,6 +17,8 @@ import {
   type Mistake,
   type MistakeType,
   type Note,
+  type PersonalAccount,
+  type PersonalAccountCategory,
   type Problem,
   type Reminder,
   type ReviewRating,
@@ -36,12 +38,29 @@ type DevProjectRow = typeof schema.devProjects.$inferSelect
 type FlashcardRow = typeof schema.flashcards.$inferSelect
 type MistakeRow = typeof schema.mistakes.$inferSelect
 type NoteRow = typeof schema.notes.$inferSelect
+type PersonalAccountRow = typeof schema.personalAccounts.$inferSelect
 type ProblemRow = typeof schema.problems.$inferSelect
 type ReminderRow = typeof schema.reminders.$inferSelect
 type RoadmapItemRow = typeof schema.roadmapItems.$inferSelect
 type RoadmapRow = typeof schema.roadmaps.$inferSelect
 type SolutionRow = typeof schema.solutions.$inferSelect
 type TagRow = typeof schema.tags.$inferSelect
+
+const PERSONAL_ACCOUNT_CATEGORIES: PersonalAccountCategory[] = [
+  'email',
+  'social',
+  'school',
+  'streaming',
+  'shopping',
+  'finance',
+  'other',
+]
+
+function asPersonalAccountCategory(value: unknown): PersonalAccountCategory {
+  return PERSONAL_ACCOUNT_CATEGORIES.includes(value as PersonalAccountCategory)
+    ? (value as PersonalAccountCategory)
+    : 'other'
+}
 
 function requireDb(): Database {
   if (!db) throw new Error('DATABASE_URL is not configured')
@@ -232,6 +251,16 @@ function serializeDevAccount(row: DevAccountRow): DevAccount {
   return {
     ...row,
     kind: row.kind as DevCredentialKind,
+    password: decryptSecret(row.password),
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializePersonalAccount(row: PersonalAccountRow): PersonalAccount {
+  return {
+    ...row,
+    category: asPersonalAccountCategory(row.category),
     password: decryptSecret(row.password),
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
@@ -1021,6 +1050,102 @@ export async function deleteDevAccount(userId: string, projectId: string, accoun
     .delete(schema.devAccounts)
     .where(and(eq(schema.devAccounts.id, accountId), eq(schema.devAccounts.projectId, projectId)))
     .returning({ id: schema.devAccounts.id })
+  return Boolean(row)
+}
+
+export async function listPersonalAccounts(
+  userId: string,
+  filters: { category?: string; search?: string } = {},
+) {
+  const rows = await requireDb()
+    .select()
+    .from(schema.personalAccounts)
+    .where(eq(schema.personalAccounts.userId, userId))
+    .orderBy(desc(schema.personalAccounts.updatedAt))
+
+  const query = filters.search?.toLowerCase()
+  return rows
+    .map(serializePersonalAccount)
+    .filter((account) => !filters.category || account.category === filters.category)
+    .filter(
+      (account) =>
+        !query ||
+        account.name.toLowerCase().includes(query) ||
+        account.username.toLowerCase().includes(query) ||
+        (account.notes?.toLowerCase().includes(query) ?? false),
+    )
+}
+
+export async function getPersonalAccount(userId: string, accountId: string) {
+  const [row] = await requireDb()
+    .select()
+    .from(schema.personalAccounts)
+    .where(
+      and(eq(schema.personalAccounts.id, accountId), eq(schema.personalAccounts.userId, userId)),
+    )
+    .limit(1)
+  return row ? serializePersonalAccount(row) : null
+}
+
+export async function createPersonalAccount(userId: string, body: Record<string, unknown>) {
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  const username = typeof body.username === 'string' ? body.username.trim() : ''
+  const password = typeof body.password === 'string' ? body.password : ''
+  if (!name || !username || !password) {
+    throw new Error('name, username, and password are required')
+  }
+
+  const [row] = await requireDb()
+    .insert(schema.personalAccounts)
+    .values({
+      userId,
+      category: asPersonalAccountCategory(body.category),
+      name,
+      username,
+      password: encryptSecret(password),
+      url: optionalString(body.url),
+      notes: optionalString(body.notes),
+    })
+    .returning()
+  return serializePersonalAccount(row)
+}
+
+export async function updatePersonalAccount(
+  userId: string,
+  accountId: string,
+  body: Record<string, unknown>,
+) {
+  const updates: Partial<typeof schema.personalAccounts.$inferInsert> = {
+    updatedAt: new Date(),
+  }
+  if (typeof body.category === 'string') updates.category = asPersonalAccountCategory(body.category)
+  if (typeof body.name === 'string' && body.name.trim()) updates.name = body.name.trim()
+  if (typeof body.username === 'string' && body.username.trim()) {
+    updates.username = body.username.trim()
+  }
+  if ('password' in body && typeof body.password === 'string' && body.password.length > 0) {
+    updates.password = encryptSecret(body.password)
+  }
+  if ('url' in body) updates.url = optionalString(body.url)
+  if ('notes' in body) updates.notes = optionalString(body.notes)
+
+  const [row] = await requireDb()
+    .update(schema.personalAccounts)
+    .set(updates)
+    .where(
+      and(eq(schema.personalAccounts.id, accountId), eq(schema.personalAccounts.userId, userId)),
+    )
+    .returning()
+  return row ? serializePersonalAccount(row) : null
+}
+
+export async function deletePersonalAccount(userId: string, accountId: string) {
+  const [row] = await requireDb()
+    .delete(schema.personalAccounts)
+    .where(
+      and(eq(schema.personalAccounts.id, accountId), eq(schema.personalAccounts.userId, userId)),
+    )
+    .returning({ id: schema.personalAccounts.id })
   return Boolean(row)
 }
 
