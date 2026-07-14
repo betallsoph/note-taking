@@ -101,7 +101,7 @@ server/
 - Feature-based folder structure for scalability
 - Mock auth middleware injects a demo user; swap for JWT or session auth when needed
 - Routes use Neon/Drizzle when `DATABASE_URL` exists and mock data otherwise
-- Free-form **Notes** prefer MongoDB Atlas when `MONGODB_URI` is set (Neon/mock otherwise)
+- Free-form **Notes** use Neon by default (`NOTES_STORE=neon`); Atlas is optional (`atlas` or `backup`)
 - Dev Vault groups credentials by project and can encrypt secrets with `SECRET_ENCRYPTION_KEY`
 - All user-owned records are scoped by `userId`
 - All DSA visualizations are generated from discrete state transitions
@@ -114,7 +114,7 @@ This repo is ready to run without a VPS:
 - Vercel serves the Vite app from `dist`.
 - Vercel serverless functions route `/api/*` to the Express app through `api/index.ts` (see `vercel.json` rewrites).
 - Neon stores relational Postgres data when `DATABASE_URL` is configured.
-- MongoDB Atlas can store free-form Notes (+ Atlas Search) when `MONGODB_URI` is configured.
+- MongoDB Atlas is optional for Notes (`NOTES_STORE`) or as an async backup copy
 
 ### Vercel Environment Variables
 
@@ -124,6 +124,7 @@ Set these in Vercel Project Settings:
 DATABASE_URL="postgresql://...-pooler...neon.tech/...?...sslmode=require"
 MONGODB_URI="mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
 MONGODB_DB_NAME="cs_hub"
+NOTES_STORE="neon"
 SECRET_ENCRYPTION_KEY="replace-with-a-long-random-value"
 APP_ACCESS_TOKEN="replace-with-another-long-random-value"
 NODE_ENV="production"
@@ -131,7 +132,15 @@ NODE_ENV="production"
 
 Use the Neon pooled connection string for serverless deployments. Keep `SECRET_ENCRYPTION_KEY` stable after you start creating real Dev Vault records, because changing it will make previously encrypted secrets unreadable. Set `APP_ACCESS_TOKEN` on Vercel to protect the app with a simple personal unlock screen; leave it empty only for local development or non-sensitive demos.
 
-`MONGODB_URI` is optional. Without it, Notes stay on Neon/mock. With it, Notes switch to Atlas automatically (`GET /api/health` shows `notesStore: "atlas"`).
+`MONGODB_URI` is optional. Notes routing is controlled by `NOTES_STORE` (not auto-detected from Mongo env alone):
+
+| `NOTES_STORE` | Behavior |
+|---------------|----------|
+| `neon` (default when `DATABASE_URL` is set) | Notes on Neon only — Mongo is not queried on reads |
+| `atlas` | Notes on MongoDB Atlas only (Atlas Search, no Neon notes table) |
+| `backup` | Neon primary; writes are copied to Atlas asynchronously |
+
+`GET /api/health` shows `notesStore`, `notesStoreMode`, and `mongoNotesBackup`.
 
 ### First Database Setup
 
@@ -175,16 +184,17 @@ Local `.env`:
 ```bash
 MONGODB_URI="mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
 MONGODB_DB_NAME="cs_hub"
+NOTES_STORE="atlas"
 ```
 
-Also add the same vars in Vercel Project Settings.
+Also add the same vars in Vercel Project Settings. Use `NOTES_STORE=backup` if Neon is primary and Atlas is only an async copy.
 
 ### 3. Seed + verify
 
 ```bash
 npm run db:seed:mongo
 curl http://localhost:3001/api/health
-# expect: "mongo":"atlas", "notesStore":"atlas"
+# expect: "notesStore":"atlas", "notesStoreMode":"atlas"
 ```
 
 ### 4. Create Atlas Search index (fuzzy notes)
@@ -197,13 +207,15 @@ curl http://localhost:3001/api/health
 
 Until the Search index exists, note search still works via regex fallback. After it is Active, list/search uses `$search` with fuzzy/autocomplete.
 
-### Notes storage priority
+### Notes storage modes
 
-1. `MONGODB_URI` set → Atlas  
-2. else `DATABASE_URL` set → Neon  
-3. else → in-memory mock  
+Set `NOTES_STORE` explicitly — Mongo is **not** probed on every Notes request anymore:
 
-Reminders / Knowledge / Flashcards stay on Neon. Only free-form Notes move to Atlas.
+1. `neon` (default when `DATABASE_URL` is set) → Neon only; fast reads, Mongo ignored unless `backup`
+2. `atlas` → MongoDB Atlas only for Notes (set `MONGODB_URI`, no Neon notes reads)
+3. `backup` → Neon primary + async Atlas copy on writes
+
+Reminders / Knowledge / Flashcards always stay on Neon.
 
 ## Claude Desktop MCP
 

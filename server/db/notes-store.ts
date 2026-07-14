@@ -12,45 +12,36 @@ import {
   getMongoNote,
   listMongoNotes,
   updateMongoNote,
+  upsertMongoNote,
 } from './mongo-notes.js'
 import { isMongoEnabled } from './mongo.js'
+import {
+  activeNotesStoreLabel,
+  resolveNotesStoreMode,
+  usesMongoNotesBackup,
+  type NotesStoreLabel,
+} from './notes-config.js'
 import { mockStore, id, now, type Note } from '../mock-store.js'
 import { isMissingRelation } from './pg-error.js'
 
-export type NotesStore = 'atlas' | 'neon' | 'mock'
+export type NotesStore = NotesStoreLabel
 
-let mongoUsable: boolean | null = null
-let mongoCheckedAt = 0
-const MONGO_HEALTH_TTL_MS = 60_000
-
-async function canUseMongo(): Promise<boolean> {
-  if (!isMongoEnabled()) return false
-
-  const fresh = mongoCheckedAt && Date.now() - mongoCheckedAt < MONGO_HEALTH_TTL_MS
-  if (fresh && mongoUsable !== null) return mongoUsable
-
-  try {
-    const { getMongoDb } = await import('./mongo.js')
-    const db = await getMongoDb()
-    await db.command({ ping: 1 })
-    mongoUsable = true
-  } catch (error) {
-    console.error('MongoDB unavailable for notes — falling back:', error)
-    mongoUsable = false
-  }
-  mongoCheckedAt = Date.now()
-  return mongoUsable
+function queueMongoBackup(task: () => Promise<void>) {
+  task().catch((error) => console.error('Mongo notes backup failed (non-fatal):', error))
 }
 
-export function resetMongoHealthCache() {
-  mongoUsable = null
-  mongoCheckedAt = 0
+function backupNoteToMongo(note: Note) {
+  if (!usesMongoNotesBackup()) return
+  queueMongoBackup(() => upsertMongoNote(note).then(() => undefined))
 }
 
-export async function activeNotesStore(): Promise<NotesStore> {
-  if (await canUseMongo()) return 'atlas'
-  if (isDatabaseEnabled()) return 'neon'
-  return 'mock'
+function backupDeleteFromMongo(userId: string, noteId: string) {
+  if (!usesMongoNotesBackup()) return
+  queueMongoBackup(() => deleteMongoNote(userId, noteId).then(() => undefined))
+}
+
+export function activeNotesStore(): NotesStore {
+  return activeNotesStoreLabel()
 }
 
 function sortMockNotes(items: Note[]) {
@@ -77,46 +68,76 @@ function filterMockNotes(
   return sortMockNotes(items)
 }
 
+async function listFromNeon(
+  userId: string,
+  filters: { search?: string; pinned?: string },
+) {
+  if (!isDatabaseEnabled()) return null
+  try {
+    return await listNotes(userId, filters)
+  } catch (error) {
+    console.error('Neon list notes failed:', error)
+    return null
+  }
+}
+
+async function listFromAtlas(
+  userId: string,
+  filters: { search?: string; pinned?: string },
+) {
+  try {
+    return await listMongoNotes(userId, filters)
+  } catch (error) {
+    console.error('Atlas list notes failed:', error)
+    if (process.env.NODE_ENV === 'production') throw error
+    return null
+  }
+}
+
 export async function listNotesAnywhere(
   userId: string,
   filters: { search?: string; pinned?: string } = {},
 ) {
-  if (await canUseMongo()) {
-    try {
-      return await listMongoNotes(userId, filters)
-    } catch (error) {
-      console.error('Mongo list notes failed — falling back:', error)
-      mongoUsable = false
-    }
+  const mode = resolveNotesStoreMode()
+
+  if (mode === 'atlas') {
+    const notes = await listFromAtlas(userId, filters)
+    if (notes) return notes
+    if (process.env.NODE_ENV === 'production') throw new Error('Atlas notes unavailable')
   }
-  if (isDatabaseEnabled()) {
-    try {
-      return await listNotes(userId, filters)
-    } catch (error) {
-      console.error('Neon list notes failed — falling back to mock:', error)
-    }
+
+  if (mode === 'neon' || mode === 'backup') {
+    const notes = await listFromNeon(userId, filters)
+    if (notes) return notes
+    if (process.env.NODE_ENV === 'production') throw new Error('Neon notes unavailable')
   }
+
   return filterMockNotes(userId, filters)
 }
 
 export async function getNoteAnywhere(userId: string, noteId: string) {
-  if (await canUseMongo()) {
+  const mode = resolveNotesStoreMode()
+
+  if (mode === 'atlas') {
     try {
       const note = await getMongoNote(userId, noteId)
       if (note) return note
     } catch (error) {
-      console.error('Mongo get note failed — falling back:', error)
-      mongoUsable = false
+      console.error('Atlas get note failed:', error)
+      if (process.env.NODE_ENV === 'production') throw error
     }
   }
-  if (isDatabaseEnabled()) {
+
+  if (mode === 'neon' || mode === 'backup') {
     try {
       const note = await getNote(userId, noteId)
       if (note) return note
     } catch (error) {
-      console.error('Neon get note failed — falling back to mock:', error)
+      console.error('Neon get note failed:', error)
+      if (process.env.NODE_ENV === 'production') throw error
     }
   }
+
   return mockStore.notes.find((n) => n.id === noteId && n.userId === userId) ?? null
 }
 
@@ -125,19 +146,22 @@ export async function createNoteAnywhere(userId: string, body: Record<string, un
     typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'Untitled'
   const content = body.content ?? { markdown: '' }
   const isPinned = Boolean(body.isPinned)
+  const mode = resolveNotesStoreMode()
 
-  if (await canUseMongo()) {
+  if (mode === 'atlas') {
     try {
       return await createMongoNote(userId, body)
     } catch (error) {
-      console.error('Mongo create note failed — falling back:', error)
-      mongoUsable = false
+      console.error('Atlas create note failed:', error)
+      if (process.env.NODE_ENV === 'production') throw error
     }
   }
 
-  if (isDatabaseEnabled()) {
+  if (mode === 'neon' || mode === 'backup') {
     try {
-      return await createNote(userId, body)
+      const note = await createNote(userId, body)
+      backupNoteToMongo(note)
+      return note
     } catch (error) {
       if (process.env.NODE_ENV === 'production') throw error
       if (isMissingRelation(error) || isSchemaBootstrapError(error)) {
@@ -166,22 +190,28 @@ export async function updateNoteAnywhere(
   noteId: string,
   body: Record<string, unknown>,
 ) {
-  if (await canUseMongo()) {
+  const mode = resolveNotesStoreMode()
+
+  if (mode === 'atlas') {
     try {
       const note = await updateMongoNote(userId, noteId, body)
       if (note) return note
     } catch (error) {
-      console.error('Mongo update note failed — falling back:', error)
-      mongoUsable = false
+      console.error('Atlas update note failed:', error)
+      if (process.env.NODE_ENV === 'production') throw error
     }
   }
 
-  if (isDatabaseEnabled()) {
+  if (mode === 'neon' || mode === 'backup') {
     try {
       const note = await updateNote(userId, noteId, body)
-      if (note) return note
+      if (note) {
+        backupNoteToMongo(note)
+        return note
+      }
     } catch (error) {
-      console.error('Neon update note failed — falling back to mock:', error)
+      console.error('Neon update note failed:', error)
+      if (process.env.NODE_ENV === 'production') throw error
     }
   }
 
@@ -203,20 +233,26 @@ export async function updateNoteAnywhere(
 }
 
 export async function deleteNoteAnywhere(userId: string, noteId: string) {
-  if (await canUseMongo()) {
+  const mode = resolveNotesStoreMode()
+
+  if (mode === 'atlas') {
     try {
       if (await deleteMongoNote(userId, noteId)) return true
     } catch (error) {
-      console.error('Mongo delete note failed — falling back:', error)
-      mongoUsable = false
+      console.error('Atlas delete note failed:', error)
+      if (process.env.NODE_ENV === 'production') throw error
     }
   }
 
-  if (isDatabaseEnabled()) {
+  if (mode === 'neon' || mode === 'backup') {
     try {
-      if (await deleteNote(userId, noteId)) return true
+      if (await deleteNote(userId, noteId)) {
+        backupDeleteFromMongo(userId, noteId)
+        return true
+      }
     } catch (error) {
-      console.error('Neon delete note failed — falling back to mock:', error)
+      console.error('Neon delete note failed:', error)
+      if (process.env.NODE_ENV === 'production') throw error
     }
   }
 
@@ -235,8 +271,10 @@ export async function countNotesAnywhere(userId: string) {
   }
 }
 
-/** Best-effort index setup — must not block API startup. */
+/** Best-effort index setup when Atlas is used for notes or as backup. */
 export function warmMongoNotesIndexes() {
+  const mode = resolveNotesStoreMode()
+  if (mode !== 'atlas' && mode !== 'backup') return
   if (!isMongoEnabled()) return
   import('./mongo-notes.js')
     .then(({ ensureMongoNotesIndexes }) => ensureMongoNotesIndexes())
