@@ -14,23 +14,55 @@ import {
   SidebarSimple,
   Moon,
   Sun,
+  type Icon,
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store'
 import { Button } from '@/components/ui/button'
 
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: House },
-  { to: '/knowledge', label: 'Knowledge Base', icon: BookOpen },
-  { to: '/notes', label: 'Notes', icon: NotePencil },
-  { to: '/reminders', label: 'Reminders', icon: Bell },
-  { to: '/dsa', label: 'DSA Visualizer', icon: Graph },
-  { to: '/problems', label: 'Problems', icon: Code },
-  { to: '/roadmaps', label: 'Roadmaps', icon: MapTrifold },
-  { to: '/flashcards', label: 'Flashcards', icon: Cards },
-  { to: '/reviews', label: 'Reviews', icon: ArrowsClockwise },
-  { to: '/interview', label: 'Interview Hub', icon: MicrophoneStage },
-  { to: '/dev-accounts', label: 'Dev Vault', icon: Key },
+interface NavItem {
+  to: string
+  label: string
+  icon: Icon
+}
+
+interface NavGroup {
+  label?: string
+  items: NavItem[]
+}
+
+const navGroups: NavGroup[] = [
+  {
+    items: [{ to: '/', label: 'Dashboard', icon: House }],
+  },
+  {
+    label: 'Capture',
+    items: [
+      { to: '/notes', label: 'Notes', icon: NotePencil },
+      { to: '/reminders', label: 'Reminders', icon: Bell },
+    ],
+  },
+  {
+    label: 'Study',
+    items: [
+      { to: '/knowledge', label: 'Knowledge Base', icon: BookOpen },
+      { to: '/roadmaps', label: 'Roadmaps', icon: MapTrifold },
+      { to: '/dsa', label: 'DSA Visualizer', icon: Graph },
+    ],
+  },
+  {
+    label: 'Practice',
+    items: [
+      { to: '/problems', label: 'Problems', icon: Code },
+      { to: '/flashcards', label: 'Flashcards', icon: Cards },
+      { to: '/reviews', label: 'Reviews', icon: ArrowsClockwise },
+      { to: '/interview', label: 'Interview Hub', icon: MicrophoneStage },
+    ],
+  },
+  {
+    label: 'Tools',
+    items: [{ to: '/dev-accounts', label: 'Dev Vault', icon: Key }],
+  },
 ]
 
 export function Sidebar() {
@@ -58,25 +90,43 @@ export function Sidebar() {
         </Button>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-2">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-                isActive
-                  ? 'bg-sidebar-accent text-foreground font-medium'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground',
-                sidebarCollapsed && 'justify-center px-2',
-              )
-            }
+      <nav className="flex-1 overflow-y-auto p-2">
+        {navGroups.map((group, groupIndex) => (
+          <div
+            key={group.label ?? `group-${groupIndex}`}
+            className={cn(groupIndex > 0 && 'mt-3')}
           >
-            <Icon className="h-4 w-4 shrink-0" weight="duotone" />
-            {!sidebarCollapsed && <span>{label}</span>}
-          </NavLink>
+            {group.label && !sidebarCollapsed && (
+              <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                {group.label}
+              </p>
+            )}
+            {group.label && sidebarCollapsed && groupIndex > 0 && (
+              <div className="mx-2 mb-2 border-t border-sidebar-border" />
+            )}
+            <div className="space-y-1">
+              {group.items.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  title={sidebarCollapsed ? label : undefined}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                      isActive
+                        ? 'bg-sidebar-accent text-foreground font-medium'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground',
+                      sidebarCollapsed && 'justify-center px-2',
+                    )
+                  }
+                >
+                  <Icon className="h-4 w-4 shrink-0" weight="duotone" />
+                  {!sidebarCollapsed && <span>{label}</span>}
+                </NavLink>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 
