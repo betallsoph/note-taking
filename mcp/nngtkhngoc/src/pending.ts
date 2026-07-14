@@ -91,7 +91,7 @@ export type PendingChange = {
 
 type StoreFile = { changes: PendingChange[] }
 
-let databaseUserReady: Promise<void> | undefined
+let databaseUserReady: Promise<boolean> | undefined
 
 export function ensureDatabaseUser() {
   databaseUserReady ??= ensureUser(MOCK_USER)

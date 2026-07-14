@@ -20,7 +20,12 @@ import simulationsRouter from './routes/simulations.js'
 import devAccountsRouter from './routes/dev-accounts.js'
 
 const app = express()
-const ready = isDatabaseEnabled() ? ensureUser(MOCK_USER) : Promise.resolve()
+
+if (isDatabaseEnabled()) {
+  ensureUser(MOCK_USER).catch((error) => {
+    console.error('Mock user bootstrap failed (non-fatal):', error)
+  })
+}
 
 if (isMongoEnabled()) {
   warmMongoNotesIndexes()
@@ -28,14 +33,6 @@ if (isMongoEnabled()) {
 
 app.use(cors())
 app.use(express.json())
-app.use(async (_req, _res, next) => {
-  try {
-    await ready
-    next()
-  } catch (error) {
-    next(error)
-  }
-})
 app.use(mockAuth)
 
 app.get('/api/health', async (_req, res) => {
@@ -84,7 +81,12 @@ app.use('/api/dev-accounts', devAccountsRouter)
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(error)
-  const message = error instanceof Error ? error.message : 'Internal server error'
+  let message = error instanceof Error ? error.message : 'Internal server error'
+  if (message.startsWith('Failed query:')) {
+    const cause = (error as { cause?: Error }).cause
+    if (cause?.message) message = cause.message
+    else if (message.includes('users')) message = 'Database not initialized — run npm run db:push against Neon'
+  }
   res.status(500).json({ error: message })
 })
 

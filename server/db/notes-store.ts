@@ -14,8 +14,8 @@ import {
   updateMongoNote,
 } from './mongo-notes.js'
 import { isMongoEnabled } from './mongo.js'
-import { mockStore, id, now } from '../mock-store.js'
-import type { Note } from '../mock-store.js'
+import { mockStore, id, now, type Note } from '../mock-store.js'
+import { isMissingRelation } from './pg-error.js'
 
 export type NotesStore = 'atlas' | 'neon' | 'mock'
 
@@ -139,11 +139,12 @@ export async function createNoteAnywhere(userId: string, body: Record<string, un
     try {
       return await createNote(userId, body)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (!message.includes('relation') && !message.includes('does not exist')) {
+      if (process.env.NODE_ENV === 'production') throw error
+      if (isMissingRelation(error) || isSchemaBootstrapError(error)) {
+        console.error('Neon notes unavailable — falling back to mock:', error)
+      } else {
         throw error
       }
-      console.error('Neon notes table missing — falling back to mock:', error)
     }
   }
 
@@ -242,13 +243,21 @@ export function warmMongoNotesIndexes() {
     .catch((error) => console.error('Mongo index setup failed (non-fatal):', error))
 }
 
+function isSchemaBootstrapError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('db:push') || message.includes('users table missing')
+}
+
 function publicMessage(error: unknown, fallback: string) {
   if (!(error instanceof Error)) return fallback
   const msg = error.message
   if (msg.includes('authentication failed') || msg.includes('bad auth')) {
     return 'MongoDB authentication failed — check MONGODB_URI password'
   }
-  if (msg.includes('relation') && msg.includes('notes')) {
+  if (isMissingRelation(error, 'users') || msg.includes('users table missing')) {
+    return 'Database not initialized — run npm run db:push against Neon, then redeploy'
+  }
+  if (isMissingRelation(error, 'notes')) {
     return 'Notes table missing in Neon — run npm run db:push'
   }
   return msg || fallback

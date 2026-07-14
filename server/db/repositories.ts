@@ -1,8 +1,9 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import { and, desc, eq, inArray, lte } from 'drizzle-orm'
 import { db, type Database } from './index.js'
+import { getPgError, isMissingRelation } from './pg-error.js'
 import * as schema from './schema.js'
-import type { AuthUser } from '../middleware/auth.js'
+import { MOCK_USER, type AuthUser } from '../middleware/auth.js'
 import {
   slugify,
   type Article,
@@ -297,15 +298,41 @@ async function problemTagMap(database: Database, problemIds: string[]) {
   return map
 }
 
-export async function ensureUser(user: AuthUser) {
-  if (!db) return
-  await db
-    .insert(schema.users)
-    .values({ id: user.id, email: user.email, name: user.name })
-    .onConflictDoUpdate({
-      target: schema.users.id,
-      set: { email: user.email, name: user.name, updatedAt: new Date() },
-    })
+export async function ensureUser(user: AuthUser): Promise<boolean> {
+  if (!db) return false
+
+  try {
+    await db
+      .insert(schema.users)
+      .values({ id: user.id, email: user.email, name: user.name })
+      .onConflictDoUpdate({
+        target: schema.users.id,
+        set: { email: user.email, name: user.name, updatedAt: new Date() },
+      })
+    return true
+  } catch (error) {
+    const pg = getPgError(error)
+
+    if (pg?.code === '23505') {
+      try {
+        await db
+          .update(schema.users)
+          .set({ name: user.name, updatedAt: new Date() })
+          .where(eq(schema.users.email, user.email))
+        return true
+      } catch (retryError) {
+        console.error('ensureUser email conflict retry failed:', getPgError(retryError)?.message ?? retryError)
+        return false
+      }
+    }
+
+    if (isMissingRelation(error, 'users')) {
+      console.error('users table missing in Neon — run npm run db:push (or redeploy with DATABASE_URL set)')
+    } else {
+      console.error('ensureUser failed:', pg?.message ?? error)
+    }
+    return false
+  }
 }
 
 export async function getDashboardStats(userId: string): Promise<DashboardStats> {
@@ -1194,6 +1221,10 @@ export async function getNote(userId: string, noteId: string) {
 }
 
 export async function createNote(userId: string, body: Record<string, unknown>) {
+  if (userId === MOCK_USER.id && !(await ensureUser(MOCK_USER))) {
+    throw new Error('users table missing in Neon — run npm run db:push')
+  }
+
   const title =
     typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'Untitled'
   const [row] = await requireDb()
