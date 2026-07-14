@@ -164,14 +164,38 @@ export interface DevProject {
   accounts?: DevAccount[]
 }
 
+export interface Note {
+  id: string
+  userId: string
+  title: string
+  content: Record<string, unknown>
+  isPinned: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Reminder {
+  id: string
+  userId: string
+  title: string
+  body: string | null
+  remindAt: string
+  isCompleted: boolean
+  completedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface DashboardStats {
   totalArticles: number
   totalProblems: number
   totalFlashcards: number
   totalRoadmaps: number
+  totalNotes: number
   topicsCompleted: number
   learningStreak: number
   reviewDueToday: number
+  remindersDueToday: number
   recentlyUpdatedNotes: Article[]
 }
 
@@ -192,6 +216,7 @@ export interface SearchResults {
   articles: Article[]
   problems: Problem[]
   flashcards: Flashcard[]
+  notes: Note[]
 }
 
 export const ARTICLE_STATUS_LABELS: Record<ArticleStatus, string> = {

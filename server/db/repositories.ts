@@ -16,7 +16,9 @@ import {
   type Flashcard,
   type Mistake,
   type MistakeType,
+  type Note,
   type Problem,
+  type Reminder,
   type ReviewRating,
   type Roadmap,
   type RoadmapItem,
@@ -33,7 +35,9 @@ type DevAccountRow = typeof schema.devAccounts.$inferSelect
 type DevProjectRow = typeof schema.devProjects.$inferSelect
 type FlashcardRow = typeof schema.flashcards.$inferSelect
 type MistakeRow = typeof schema.mistakes.$inferSelect
+type NoteRow = typeof schema.notes.$inferSelect
 type ProblemRow = typeof schema.problems.$inferSelect
+type ReminderRow = typeof schema.reminders.$inferSelect
 type RoadmapItemRow = typeof schema.roadmapItems.$inferSelect
 type RoadmapRow = typeof schema.roadmaps.$inferSelect
 type SolutionRow = typeof schema.solutions.$inferSelect
@@ -181,6 +185,25 @@ function serializeFlashcard(row: FlashcardRow): Flashcard {
   }
 }
 
+function serializeNote(row: NoteRow): Note {
+  return {
+    ...row,
+    content: asRecord(row.content),
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializeReminder(row: ReminderRow): Reminder {
+  return {
+    ...row,
+    remindAt: toIso(row.remindAt),
+    completedAt: nullableIso(row.completedAt),
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
 function serializeRoadmap(row: RoadmapRow): Roadmap {
   return {
     ...row,
@@ -258,16 +281,22 @@ export async function ensureUser(user: AuthUser) {
 
 export async function getDashboardStats(userId: string): Promise<DashboardStats> {
   const database = requireDb()
-  const [articleRows, problemRows, flashcardRows, roadmapRows] = await Promise.all([
-    database
-      .select()
-      .from(schema.articles)
-      .where(and(eq(schema.articles.userId, userId), eq(schema.articles.isArchived, false)))
-      .orderBy(desc(schema.articles.updatedAt)),
-    database.select().from(schema.problems).where(eq(schema.problems.userId, userId)),
-    database.select().from(schema.flashcards).where(eq(schema.flashcards.userId, userId)),
-    database.select().from(schema.roadmaps).where(eq(schema.roadmaps.userId, userId)),
-  ])
+  const endOfToday = new Date()
+  endOfToday.setHours(23, 59, 59, 999)
+
+  const [articleRows, problemRows, flashcardRows, roadmapRows, noteRows, reminderRows] =
+    await Promise.all([
+      database
+        .select()
+        .from(schema.articles)
+        .where(and(eq(schema.articles.userId, userId), eq(schema.articles.isArchived, false)))
+        .orderBy(desc(schema.articles.updatedAt)),
+      database.select().from(schema.problems).where(eq(schema.problems.userId, userId)),
+      database.select().from(schema.flashcards).where(eq(schema.flashcards.userId, userId)),
+      database.select().from(schema.roadmaps).where(eq(schema.roadmaps.userId, userId)),
+      database.select().from(schema.notes).where(eq(schema.notes.userId, userId)),
+      database.select().from(schema.reminders).where(eq(schema.reminders.userId, userId)),
+    ])
   const tagIds = await articleTagMap(database, articleRows.map((article) => article.id))
   const recentlyUpdatedNotes = articleRows
     .slice(0, 5)
@@ -278,10 +307,14 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
     totalProblems: problemRows.length,
     totalFlashcards: flashcardRows.length,
     totalRoadmaps: roadmapRows.length,
+    totalNotes: noteRows.length,
     topicsCompleted: articleRows.filter((article) => article.status === 'completed').length,
     learningStreak: 7,
     reviewDueToday: flashcardRows.filter(
       (card) => card.nextReviewAt && card.nextReviewAt <= new Date(),
+    ).length,
+    remindersDueToday: reminderRows.filter(
+      (reminder) => !reminder.isCompleted && reminder.remindAt <= endOfToday,
     ).length,
     recentlyUpdatedNotes,
   }
@@ -1000,12 +1033,209 @@ async function getDevProject(userId: string, projectId: string) {
   return row ? serializeDevProject(row) : null
 }
 
+export async function listNotes(
+  userId: string,
+  filters: { search?: string; pinned?: string } = {},
+) {
+  const rows = await requireDb()
+    .select()
+    .from(schema.notes)
+    .where(eq(schema.notes.userId, userId))
+    .orderBy(desc(schema.notes.updatedAt))
+
+  const query = filters.search?.toLowerCase()
+  return rows
+    .map(serializeNote)
+    .filter((note) => (filters.pinned === 'true' ? note.isPinned : true))
+    .filter((note) => {
+      if (!query) return true
+      const markdown =
+        typeof note.content.markdown === 'string' ? note.content.markdown.toLowerCase() : ''
+      return note.title.toLowerCase().includes(query) || markdown.includes(query)
+    })
+    .sort((a, b) => {
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
+}
+
+export async function getNote(userId: string, noteId: string) {
+  const [row] = await requireDb()
+    .select()
+    .from(schema.notes)
+    .where(and(eq(schema.notes.id, noteId), eq(schema.notes.userId, userId)))
+    .limit(1)
+  return row ? serializeNote(row) : null
+}
+
+export async function createNote(userId: string, body: Record<string, unknown>) {
+  const title =
+    typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'Untitled'
+  const [row] = await requireDb()
+    .insert(schema.notes)
+    .values({
+      userId,
+      title,
+      content: body.content ?? { markdown: '' },
+      isPinned: Boolean(body.isPinned),
+    })
+    .returning()
+  return serializeNote(row)
+}
+
+export async function updateNote(userId: string, noteId: string, body: Record<string, unknown>) {
+  const updates: Partial<typeof schema.notes.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.title === 'string' && body.title.trim()) updates.title = body.title.trim()
+  if (body.content !== undefined) updates.content = body.content
+  if (typeof body.isPinned === 'boolean') updates.isPinned = body.isPinned
+
+  const [row] = await requireDb()
+    .update(schema.notes)
+    .set(updates)
+    .where(and(eq(schema.notes.id, noteId), eq(schema.notes.userId, userId)))
+    .returning()
+  return row ? serializeNote(row) : null
+}
+
+export async function deleteNote(userId: string, noteId: string) {
+  const [row] = await requireDb()
+    .delete(schema.notes)
+    .where(and(eq(schema.notes.id, noteId), eq(schema.notes.userId, userId)))
+    .returning({ id: schema.notes.id })
+  return Boolean(row)
+}
+
+export async function listReminders(
+  userId: string,
+  filters: { status?: string; search?: string } = {},
+) {
+  const rows = await requireDb()
+    .select()
+    .from(schema.reminders)
+    .where(eq(schema.reminders.userId, userId))
+    .orderBy(schema.reminders.remindAt)
+
+  const nowMs = Date.now()
+  const query = filters.search?.toLowerCase()
+
+  return rows
+    .map(serializeReminder)
+    .filter((reminder) => {
+      if (filters.status === 'completed') return reminder.isCompleted
+      if (filters.status === 'upcoming') {
+        return !reminder.isCompleted && new Date(reminder.remindAt).getTime() > nowMs
+      }
+      if (filters.status === 'overdue') {
+        return !reminder.isCompleted && new Date(reminder.remindAt).getTime() <= nowMs
+      }
+      if (filters.status === 'active') return !reminder.isCompleted
+      return true
+    })
+    .filter(
+      (reminder) =>
+        !query ||
+        reminder.title.toLowerCase().includes(query) ||
+        (reminder.body?.toLowerCase().includes(query) ?? false),
+    )
+    .sort((a, b) => {
+      if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1
+      return new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime()
+    })
+}
+
+export async function listDueReminders(userId: string) {
+  const endOfToday = new Date()
+  endOfToday.setHours(23, 59, 59, 999)
+  const rows = await requireDb()
+    .select()
+    .from(schema.reminders)
+    .where(
+      and(
+        eq(schema.reminders.userId, userId),
+        eq(schema.reminders.isCompleted, false),
+        lte(schema.reminders.remindAt, endOfToday),
+      ),
+    )
+    .orderBy(schema.reminders.remindAt)
+  return rows.map(serializeReminder)
+}
+
+export async function getReminder(userId: string, reminderId: string) {
+  const [row] = await requireDb()
+    .select()
+    .from(schema.reminders)
+    .where(and(eq(schema.reminders.id, reminderId), eq(schema.reminders.userId, userId)))
+    .limit(1)
+  return row ? serializeReminder(row) : null
+}
+
+export async function createReminder(userId: string, body: Record<string, unknown>) {
+  const title = typeof body.title === 'string' ? body.title.trim() : ''
+  if (!title) throw new Error('Title is required')
+  const remindAt = optionalDate(body.remindAt)
+  if (!remindAt) throw new Error('remindAt is required')
+
+  const [row] = await requireDb()
+    .insert(schema.reminders)
+    .values({
+      userId,
+      title,
+      body: optionalString(body.body),
+      remindAt,
+      isCompleted: false,
+      completedAt: null,
+    })
+    .returning()
+  return serializeReminder(row)
+}
+
+export async function updateReminder(
+  userId: string,
+  reminderId: string,
+  body: Record<string, unknown>,
+) {
+  const current = await getReminder(userId, reminderId)
+  if (!current) return null
+
+  const updates: Partial<typeof schema.reminders.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.title === 'string' && body.title.trim()) updates.title = body.title.trim()
+  if ('body' in body) updates.body = optionalString(body.body)
+  if ('remindAt' in body) {
+    const remindAt = optionalDate(body.remindAt)
+    if (remindAt) updates.remindAt = remindAt
+  }
+  if (typeof body.isCompleted === 'boolean') {
+    updates.isCompleted = body.isCompleted
+    updates.completedAt = body.isCompleted
+      ? current.completedAt
+        ? new Date(current.completedAt)
+        : new Date()
+      : null
+  }
+
+  const [row] = await requireDb()
+    .update(schema.reminders)
+    .set(updates)
+    .where(and(eq(schema.reminders.id, reminderId), eq(schema.reminders.userId, userId)))
+    .returning()
+  return row ? serializeReminder(row) : null
+}
+
+export async function deleteReminder(userId: string, reminderId: string) {
+  const [row] = await requireDb()
+    .delete(schema.reminders)
+    .where(and(eq(schema.reminders.id, reminderId), eq(schema.reminders.userId, userId)))
+    .returning({ id: schema.reminders.id })
+  return Boolean(row)
+}
+
 export async function searchEverything(userId: string, query: string) {
   const q = query.toLowerCase()
-  const [articles, problems, flashcards] = await Promise.all([
+  const [articles, problems, flashcards, notes] = await Promise.all([
     listArticles(userId, { search: q }),
     listProblems(userId, { search: q }),
     listFlashcards(userId, { search: q }),
+    listNotes(userId, { search: q }),
   ])
-  return { articles, problems, flashcards }
+  return { articles, problems, flashcards, notes }
 }

@@ -165,6 +165,43 @@ async function seed() {
     },
   ])
 
+  await db.insert(schema.notes).values([
+    {
+      userId: MOCK_USER_ID,
+      title: 'Random thoughts',
+      content: {
+        markdown:
+          'Capture anything here — meeting notes, ideas, grocery lists, whatever.\n\n- Keep it messy\n- Pin the useful ones',
+      },
+      isPinned: true,
+    },
+    {
+      userId: MOCK_USER_ID,
+      title: 'Weekend reading list',
+      content: {
+        markdown: '1. Designing Data-Intensive Applications ch.3\n2. PostgreSQL MVCC deep dive',
+      },
+      isPinned: false,
+    },
+  ])
+
+  await db.insert(schema.reminders).values([
+    {
+      userId: MOCK_USER_ID,
+      title: 'Review flashcards',
+      body: 'Do a quick OS + DB pass before bed',
+      remindAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      isCompleted: false,
+    },
+    {
+      userId: MOCK_USER_ID,
+      title: 'Submit internship application',
+      body: null,
+      remindAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      isCompleted: false,
+    },
+  ])
+
   console.log('Seed complete!')
   await client.end()
 }

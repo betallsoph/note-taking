@@ -11,6 +11,8 @@ import tagsRouter from './routes/tags.js'
 import problemsRouter from './routes/problems.js'
 import flashcardsRouter from './routes/flashcards.js'
 import roadmapsRouter from './routes/roadmaps.js'
+import notesRouter from './routes/notes.js'
+import remindersRouter from './routes/reminders.js'
 import simulationsRouter from './routes/simulations.js'
 import devAccountsRouter from './routes/dev-accounts.js'
 
@@ -51,6 +53,8 @@ app.use('/api/tags', tagsRouter)
 app.use('/api/problems', problemsRouter)
 app.use('/api/flashcards', flashcardsRouter)
 app.use('/api/roadmaps', roadmapsRouter)
+app.use('/api/notes', notesRouter)
+app.use('/api/reminders', remindersRouter)
 app.use('/api/simulations', simulationsRouter)
 app.use('/api/dev-accounts', devAccountsRouter)
 

@@ -1,0 +1,98 @@
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, PushPin, Trash } from '@phosphor-icons/react'
+import { api } from '@/services/api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/misc'
+import { NoteEditor } from './NoteEditor'
+
+export function NoteDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [title, setTitle] = useState('')
+
+  const { data: note, isLoading } = useQuery({
+    queryKey: ['note', id],
+    queryFn: () => api.notes.get(id!),
+    enabled: !!id,
+  })
+
+  useEffect(() => {
+    if (note) setTitle(note.title)
+  }, [note])
+
+  const titleMutation = useMutation({
+    mutationFn: (nextTitle: string) => api.notes.update(id!, { title: nextTitle || 'Untitled' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['note', id] })
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+    },
+  })
+
+  const pinMutation = useMutation({
+    mutationFn: () => api.notes.update(id!, { isPinned: !note?.isPinned }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['note', id] })
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.notes.delete(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      navigate('/notes')
+    },
+  })
+
+  if (isLoading) return <Skeleton className="h-96" />
+  if (!note) return <p>Note not found</p>
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center gap-3">
+        <Link to="/notes">
+          <Button variant="ghost" size="icon">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => {
+            if (title.trim() !== note.title) titleMutation.mutate(title.trim())
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur()
+            }
+          }}
+          className="border-none bg-transparent px-0 text-2xl font-semibold tracking-tight shadow-none focus-visible:ring-0"
+          placeholder="Untitled"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => pinMutation.mutate()}
+        >
+          <PushPin className="h-4 w-4" weight={note.isPinned ? 'fill' : 'regular'} />
+          {note.isPinned ? 'Pinned' : 'Pin'}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => deleteMutation.mutate()}
+        >
+          <Trash className="h-4 w-4" />
+          Delete
+        </Button>
+      </div>
+
+      <NoteEditor noteId={note.id} content={note.content} />
+    </div>
+  )
+}
