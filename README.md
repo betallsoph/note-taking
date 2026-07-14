@@ -112,7 +112,7 @@ server/
 This repo is ready to run without a VPS:
 
 - Vercel serves the Vite app from `dist`.
-- Vercel serverless functions route `/api/*` to the Express app through `api/[...path].ts`.
+- Vercel serverless functions route `/api/*` to the Express app through `api/index.ts` (see `vercel.json` rewrites).
 - Neon stores relational Postgres data when `DATABASE_URL` is configured.
 - MongoDB Atlas can store free-form Notes (+ Atlas Search) when `MONGODB_URI` is configured.
 
