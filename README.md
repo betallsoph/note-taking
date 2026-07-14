@@ -135,7 +135,9 @@ Use the Neon pooled connection string for serverless deployments. Keep `SECRET_E
 
 ### First Database Setup
 
-Run the schema push once against Neon before using the deployed app:
+Vercel builds automatically run `drizzle-kit push` when `DATABASE_URL` is set (`npm run vercel-build`). That creates/updates Neon tables on each deploy.
+
+You can also push the schema manually once:
 
 ```bash
 DATABASE_URL="postgresql://...neon..." npm run db:push
