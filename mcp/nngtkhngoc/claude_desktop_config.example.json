@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "nngtkhngoc": {
+      "command": "npm",
+      "args": [
+        "--prefix",
+        "/ABSOLUTE/PATH/TO/note-taking/mcp/nngtkhngoc",
+        "start"
+      ],
+      "env": {
+        "CS_HUB_API_URL": "http://localhost:3001/api"
+      }
+    }
+  }
+}
