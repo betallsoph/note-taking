@@ -1,87 +1,46 @@
 # nngtkhngoc MCP
 
-MCP server so Claude Desktop can read / propose changes to the CS Learning Hub app.
+Claude Desktop MCP for the CS Learning Hub. Reads go straight to Neon. **Writes never run until you approve.**
 
 ## Safety model
 
-| Tool type | Behavior |
-|-----------|----------|
-| `list_*`, `get_*`, `search`, `health_check`, `get_dashboard` | Runs immediately (read-only) |
-| `propose_*` | Creates a **pending proposal only** — does **not** write |
-| `approve_change` / `approve_all_pending` | Executes after **you** explicitly approve |
+| Tools | Behavior |
+|-------|----------|
+| `list_*`, `get_*`, `search`, `get_dashboard` | Immediate (read-only) |
+| `propose_*` | Creates a pending proposal only |
+| `approve_change` / `approve_all_pending` | Executes after **your** explicit OK |
 | `reject_change` / `reject_all_pending` | Discards proposal |
 
-Claude must show the proposal and wait for your OK before calling `approve_change`.
+## Setup
 
-## Prerequisites
-
-1. App API running:
-
-```bash
-# from repo root
-npm run dev:server
-```
-
-Default API: `http://localhost:3001/api`
-
-2. Install MCP deps:
-
-```bash
-cd mcp/nngtkhngoc
-npm install
-```
-
-## Claude Desktop config
-
-Copy `claude_desktop_config.example.json` into your Claude Desktop config and fix the absolute path.
-
-Edit:
-
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+1. Repo root has `DATABASE_URL` in `.env` (Neon).
+2. Install root deps: `npm install`
+3. Claude Desktop config (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "nngtkhngoc": {
       "command": "npm",
-      "args": [
-        "--prefix",
-        "/ABSOLUTE/PATH/TO/note-taking/mcp/nngtkhngoc",
-        "start"
-      ],
-      "env": {
-        "CS_HUB_API_URL": "http://localhost:3001/api"
-      }
+      "args": ["run", "mcp:nngtkhngoc"],
+      "cwd": "/ABSOLUTE/PATH/TO/note-taking"
     }
   }
 }
 ```
 
-Replace `/ABSOLUTE/PATH/TO/note-taking` with your real clone path. Fully quit and reopen Claude Desktop.
+Also see `claude_desktop_config.example.json`. Fully quit & reopen Claude Desktop.
 
-Optional env:
+## Flow
 
-- `CS_HUB_API_URL` — API base (default `http://localhost:3001/api`)
-- `NNG_PENDING_PATH` — where pending proposals are stored (default `mcp/nngtkhngoc/.pending-changes.json`)
-
-## Typical flow in Claude
-
-1. “List my flashcards”
-2. “Add a flashcard about MVCC in DB”
+1. “List flashcards”
+2. “Add a flashcard about MVCC”
 3. Claude calls `propose_create_flashcard` → shows proposal
 4. You say “ok / approve”
-5. Claude calls `approve_change` with that `proposal_id`
+5. Claude calls `approve_change`
 
-## Covered resources
+## Covered
 
-- Articles (+ duplicate / archive)
-- Categories, tags
-- Problems (+ solutions / mistakes)
-- Flashcards (+ review)
-- Roadmaps (+ items)
-- Dev Accounts (projects + credentials)
+Articles, categories, tags, problems (+ solutions/mistakes), flashcards (+ review), roadmaps (+ items), Dev Vault projects/accounts.
 
-## Prompt
-
-Use prompt `hub_workflow` for the built-in safety instructions.
+Prompt: `hub_workflow`

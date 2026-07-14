@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+import 'dotenv/config'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { isDatabaseEnabled } from '../../../server/db/repositories.js'
 import { registerTools } from './tools.js'
 
 const server = new McpServer({
@@ -11,28 +13,25 @@ const server = new McpServer({
 server.registerPrompt(
   'hub_workflow',
   {
-    title: 'CS Hub workflow',
-    description: 'How to safely use nngtkhngoc with review/approve before writes.',
+    title: 'CS Hub review/approve workflow',
+    description: 'How nngtkhngoc must propose mutations and wait for user approval.',
   },
   async () => ({
     messages: [
       {
-        role: 'user',
+        role: 'user' as const,
         content: {
-          type: 'text',
+          type: 'text' as const,
           text: [
-            'You are connected to the nngtkhngoc MCP for the CS Learning Hub app.',
+            'You are connected to the nngtkhngoc MCP for the CS Learning Hub.',
             '',
             'Rules:',
-            '1. READ tools (list_*, get_*, search, health_check, get_dashboard) execute immediately.',
-            '2. WRITE tools are named propose_* — they ONLY create a pending proposal. They never mutate data.',
-            '3. After proposing, show the proposal summary to the user and WAIT for explicit approval.',
+            '1. READ tools (list_*, get_*, search, get_dashboard) run immediately against Neon.',
+            '2. WRITE tools are propose_* only — they create pending proposals and NEVER mutate data.',
+            '3. After proposing, show the proposal and WAIT for explicit user approval.',
             '4. Only then call approve_change(proposal_id) or reject_change(proposal_id).',
             '5. Never call approve_change / approve_all_pending unless the user clearly approved.',
-            '6. The API must be running (default http://localhost:3001). Use health_check first if unsure.',
-            '',
-            'Covered resources: articles, categories, tags, problems/solutions/mistakes, flashcards,',
-            'roadmaps/items, and Dev Accounts (projects + credentials).',
+            '6. DATABASE_URL must be set; this MCP does not use the in-memory mock store.',
           ].join('\n'),
         },
       },
@@ -43,13 +42,18 @@ server.registerPrompt(
 registerTools(server)
 
 async function main() {
+  if (!isDatabaseEnabled()) {
+    throw new Error(
+      'DATABASE_URL is required. nngtkhngoc MCP only reads/writes persistent Neon data.',
+    )
+  }
+
   const transport = new StdioServerTransport()
   await server.connect(transport)
   console.error('nngtkhngoc MCP server running on stdio')
-  console.error(`API base: ${process.env.CS_HUB_API_URL ?? 'http://localhost:3001/api'}`)
 }
 
-main().catch((error) => {
-  console.error('Fatal MCP error:', error)
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : error)
   process.exit(1)
 })
