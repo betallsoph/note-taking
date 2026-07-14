@@ -11,6 +11,7 @@ import { RoadmapsPage } from '@/features/roadmaps/RoadmapsPage'
 import { ReviewsPage } from '@/features/reviews/ReviewsPage'
 import { InterviewHubPage } from '@/features/interview/InterviewHubPage'
 import { DevAccountsPage } from '@/features/dev-accounts/DevAccountsPage'
+import { AccountsPage } from '@/features/accounts/AccountsPage'
 import { NotesPage } from '@/features/notes/NotesPage'
 import { NoteDetailPage } from '@/features/notes/NoteDetailPage'
 import { RemindersPage } from '@/features/reminders/RemindersPage'
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
       { path: 'roadmaps', element: <RoadmapsPage /> },
       { path: 'reviews', element: <ReviewsPage /> },
       { path: 'interview', element: <InterviewHubPage /> },
+      { path: 'accounts', element: <AccountsPage /> },
       { path: 'dev-accounts', element: <DevAccountsPage /> },
     ],
   },

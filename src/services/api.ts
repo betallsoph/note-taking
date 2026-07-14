@@ -154,6 +154,24 @@ export const api = {
       request<import('@/types').Note>(`/notes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/notes/${id}`, { method: 'DELETE' }),
   },
+  accounts: {
+    list: (params?: Record<string, string>) => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+      return request<import('@/types').PersonalAccount[]>(`/accounts${qs}`)
+    },
+    get: (id: string) => request<import('@/types').PersonalAccount>(`/accounts/${id}`),
+    create: (data: Partial<import('@/types').PersonalAccount>) =>
+      request<import('@/types').PersonalAccount>('/accounts', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: Partial<import('@/types').PersonalAccount>) =>
+      request<import('@/types').PersonalAccount>(`/accounts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) => request<void>(`/accounts/${id}`, { method: 'DELETE' }),
+  },
   reminders: {
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
