@@ -4,6 +4,8 @@ import { generateBubbleSortSteps } from '../simulations/bubble-sort.js'
 import { generateMergeSortSteps } from '../simulations/merge-sort.js'
 import { generateBfsSteps } from '../simulations/bfs.js'
 import { isDatabaseEnabled, searchEverything } from '../db/repositories.js'
+import { isMongoEnabled } from '../db/mongo.js'
+import { listMongoNotes } from '../db/mongo-notes.js'
 
 const router = Router()
 
@@ -69,12 +71,14 @@ router.get('/search', async (req, res) => {
       f.userId === req.user.id &&
       (f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q)),
   )
-  const notes = mockStore.notes.filter((n) => {
-    if (n.userId !== req.user.id) return false
-    const markdown =
-      typeof n.content.markdown === 'string' ? n.content.markdown.toLowerCase() : ''
-    return n.title.toLowerCase().includes(q) || markdown.includes(q)
-  })
+  const notes = isMongoEnabled()
+    ? await listMongoNotes(req.user.id, { search: q })
+    : mockStore.notes.filter((n) => {
+        if (n.userId !== req.user.id) return false
+        const markdown =
+          typeof n.content.markdown === 'string' ? n.content.markdown.toLowerCase() : ''
+        return n.title.toLowerCase().includes(q) || markdown.includes(q)
+      })
   res.json({ articles, problems, flashcards, notes })
 })
 

@@ -4,6 +4,8 @@ import 'dotenv/config'
 import { MOCK_USER, isAccessTokenRequired, mockAuth, requireAccessToken } from './middleware/auth.js'
 import { mockStore } from './mock-store.js'
 import { databaseMode } from './db/index.js'
+import { isMongoEnabled, mongoMode } from './db/mongo.js'
+import { ensureMongoNotesIndexes, countMongoNotes } from './db/mongo-notes.js'
 import { ensureUser, getDashboardStats, isDatabaseEnabled } from './db/repositories.js'
 import articlesRouter from './routes/articles.js'
 import categoriesRouter from './routes/categories.js'
@@ -17,7 +19,10 @@ import simulationsRouter from './routes/simulations.js'
 import devAccountsRouter from './routes/dev-accounts.js'
 
 const app = express()
-const ready = isDatabaseEnabled() ? ensureUser(MOCK_USER) : Promise.resolve()
+const ready = Promise.all([
+  isDatabaseEnabled() ? ensureUser(MOCK_USER) : Promise.resolve(),
+  isMongoEnabled() ? ensureMongoNotesIndexes() : Promise.resolve(),
+])
 
 app.use(cors())
 app.use(express.json())
@@ -32,7 +37,13 @@ app.use(async (_req, _res, next) => {
 app.use(mockAuth)
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', mode: databaseMode, accessTokenRequired: isAccessTokenRequired() })
+  res.json({
+    status: 'ok',
+    mode: databaseMode,
+    mongo: mongoMode,
+    notesStore: isMongoEnabled() ? 'atlas' : databaseMode === 'neon' ? 'neon' : 'mock',
+    accessTokenRequired: isAccessTokenRequired(),
+  })
 })
 
 app.use(requireAccessToken)
@@ -42,9 +53,18 @@ app.get('/api/auth/me', (req, res) => {
 
 app.get('/api/dashboard', async (req, res) => {
   if (isDatabaseEnabled()) {
-    return res.json(await getDashboardStats(req.user.id))
+    const stats = await getDashboardStats(req.user.id)
+    if (isMongoEnabled()) {
+      stats.totalNotes = await countMongoNotes(req.user.id)
+    }
+    return res.json(stats)
   }
-  res.json(mockStore.getDashboardStats(req.user.id))
+
+  const stats = mockStore.getDashboardStats(req.user.id)
+  if (isMongoEnabled()) {
+    stats.totalNotes = await countMongoNotes(req.user.id)
+  }
+  res.json(stats)
 })
 
 app.use('/api/articles', articlesRouter)
