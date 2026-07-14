@@ -33,35 +33,28 @@ interface NavGroup {
 
 const navGroups: NavGroup[] = [
   {
+    label: 'home',
     items: [{ to: '/', label: 'Dashboard', icon: House }],
   },
   {
-    label: 'Capture',
+    label: 'desk',
     items: [
       { to: '/notes', label: 'Notes', icon: NotePencil },
       { to: '/reminders', label: 'Reminders', icon: Bell },
+      { to: '/dev-accounts', label: 'Dev Vault', icon: Key },
     ],
   },
   {
-    label: 'Study',
+    label: 'study',
     items: [
       { to: '/knowledge', label: 'Knowledge Base', icon: BookOpen },
       { to: '/roadmaps', label: 'Roadmaps', icon: MapTrifold },
       { to: '/dsa', label: 'DSA Visualizer', icon: Graph },
-    ],
-  },
-  {
-    label: 'Practice',
-    items: [
       { to: '/problems', label: 'Problems', icon: Code },
       { to: '/flashcards', label: 'Flashcards', icon: Cards },
       { to: '/reviews', label: 'Reviews', icon: ArrowsClockwise },
       { to: '/interview', label: 'Interview Hub', icon: MicrophoneStage },
     ],
-  },
-  {
-    label: 'Tools',
-    items: [{ to: '/dev-accounts', label: 'Dev Vault', icon: Key }],
   },
 ]
 
@@ -94,10 +87,10 @@ export function Sidebar() {
         {navGroups.map((group, groupIndex) => (
           <div
             key={group.label ?? `group-${groupIndex}`}
-            className={cn(groupIndex > 0 && 'mt-3')}
+            className={cn(groupIndex > 0 && 'mt-4')}
           >
             {group.label && !sidebarCollapsed && (
-              <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+              <p className="px-3 pb-1.5 pt-0.5 text-[12px] font-semibold tracking-wide text-foreground/75">
                 {group.label}
               </p>
             )}
