@@ -141,3 +141,31 @@ DATABASE_URL="postgresql://...neon..." npm run db:seed
 ```
 
 Do not cron-ping Neon just to keep it warm on the free tier. Let it go inactive; the first request after sleep may be slower, which is fine for a personal knowledge app.
+
+## Claude Desktop MCP
+
+The local MCP server gives Claude Desktop read/write access to knowledge notes, categories, tags, and flashcards stored in the same Neon database. It deliberately cannot read or write Dev Vault credentials, and it exposes no delete tools.
+
+It requires a local `.env` with `DATABASE_URL` configured. Test it from the repository root:
+
+```bash
+npm run mcp
+```
+
+Then add this entry to Claude Desktop's `claude_desktop_config.json` (replace the path with your local clone path):
+
+```json
+{
+  "mcpServers": {
+    "cs-learning-hub": {
+      "command": "/Users/antt/Desktop/Riyadh/note-taking/node_modules/.bin/tsx",
+      "args": ["/Users/antt/Desktop/Riyadh/note-taking/mcp/server.ts"],
+      "env": {
+        "DOTENV_CONFIG_PATH": "/Users/antt/Desktop/Riyadh/note-taking/.env"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving the config. The `save_note` tool accepts Markdown and stores it in the same format the app editor uses; new category and tag names are created automatically.
