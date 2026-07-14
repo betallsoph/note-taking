@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MagnifyingGlass, NotePencil, Plus, PushPin } from '@phosphor-icons/react'
 import { api } from '@/services/api'
@@ -7,25 +7,17 @@ import { PageHeader, EmptyState, Skeleton } from '@/components/ui/misc'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatDate, notePreview } from '@/lib/utils'
+import { NoteFormDialog } from './NoteFormDialog'
 
 export function NotesPage() {
   const [search, setSearch] = useState('')
-  const navigate = useNavigate()
+  const [createOpen, setCreateOpen] = useState(false)
   const queryClient = useQueryClient()
 
   const params = search ? { search } : undefined
   const { data: notes, isLoading } = useQuery({
     queryKey: ['notes', params],
     queryFn: () => api.notes.list(params),
-  })
-
-  const createMutation = useMutation({
-    mutationFn: () => api.notes.create({ title: 'Untitled', content: { markdown: '' } }),
-    onSuccess: (note) => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] })
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      navigate(`/notes/${note.id}`)
-    },
   })
 
   const deleteMutation = useMutation({
@@ -48,7 +40,7 @@ export function NotesPage() {
         title="Notes"
         description="Free-form notes for anything — ideas, lists, dumps, reminders to self"
         actions={
-          <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
+          <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" />
             New Note
           </Button>
@@ -76,7 +68,7 @@ export function NotesPage() {
           title="Nothing here yet"
           description="Dump whatever is on your mind. No categories, no status — just notes."
           action={
-            <Button onClick={() => createMutation.mutate()}>
+            <Button onClick={() => setCreateOpen(true)}>
               <NotePencil className="h-4 w-4" />
               Start writing
             </Button>
@@ -125,6 +117,8 @@ export function NotesPage() {
           ))}
         </div>
       )}
+
+      <NoteFormDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   )
 }
