@@ -28,3 +28,6 @@ dist-ssr
 
 # Drizzle
 server/db/migrations
+
+# MCP pending mutation queue
+mcp/nngtkhngoc/.pending-changes.json

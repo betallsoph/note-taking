@@ -17,5 +17,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts", "server/**/*", "api/**/*", "drizzle.config.ts"]
+  "include": ["vite.config.ts", "server/**/*", "api/**/*", "mcp/**/*", "drizzle.config.ts"]
 }

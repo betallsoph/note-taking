@@ -15,7 +15,8 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx server/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "mcp": "tsx mcp/server.ts"
+    "mcp": "tsx mcp/nngtkhngoc/src/index.ts",
+    "mcp:nngtkhngoc": "tsx mcp/nngtkhngoc/src/index.ts"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.2.5",

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "nngtkhngoc": {
+      "command": "npm",
+      "args": ["run", "mcp:nngtkhngoc"],
+      "cwd": "/ABSOLUTE/PATH/TO/note-taking"
+    }
+  }
+}
