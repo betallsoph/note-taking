@@ -16,6 +16,7 @@ import flashcardsRouter from './routes/flashcards.js'
 import roadmapsRouter from './routes/roadmaps.js'
 import notesRouter from './routes/notes.js'
 import remindersRouter from './routes/reminders.js'
+import plannerRouter from './routes/planner.js'
 import accountsRouter from './routes/accounts.js'
 import simulationsRouter from './routes/simulations.js'
 import devAccountsRouter from './routes/dev-accounts.js'
@@ -75,6 +76,7 @@ app.use('/api/flashcards', flashcardsRouter)
 app.use('/api/roadmaps', roadmapsRouter)
 app.use('/api/notes', notesRouter)
 app.use('/api/reminders', remindersRouter)
+app.use('/api/planner', plannerRouter)
 app.use('/api/accounts', accountsRouter)
 app.use('/api/simulations', simulationsRouter)
 app.use('/api/dev-accounts', devAccountsRouter)

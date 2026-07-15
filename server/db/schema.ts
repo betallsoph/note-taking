@@ -300,6 +300,29 @@ export const reminders = pgTable(
   ],
 )
 
+export const plannerItems = pgTable(
+  'planner_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    body: text('body'),
+    scope: text('scope').notNull().default('personal'),
+    projectName: text('project_name'),
+    horizon: text('horizon').notNull().default('later'),
+    status: text('status').notNull().default('open'),
+    targetDate: timestamp('target_date', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('planner_items_user_id_idx').on(table.userId),
+    index('planner_items_user_id_status_idx').on(table.userId, table.status),
+  ],
+)
+
 export const simulations = pgTable('simulations', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id')
@@ -391,6 +414,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   reviews: many(reviews),
   notes: many(notes),
   reminders: many(reminders),
+  plannerItems: many(plannerItems),
   personalAccounts: many(personalAccounts),
   simulations: many(simulations),
   devProjects: many(devProjects),
@@ -402,6 +426,10 @@ export const notesRelations = relations(notes, ({ one }) => ({
 
 export const remindersRelations = relations(reminders, ({ one }) => ({
   user: one(users, { fields: [reminders.userId], references: [users.id] }),
+}))
+
+export const plannerItemsRelations = relations(plannerItems, ({ one }) => ({
+  user: one(users, { fields: [plannerItems.userId], references: [users.id] }),
 }))
 
 export const personalAccountsRelations = relations(personalAccounts, ({ one }) => ({

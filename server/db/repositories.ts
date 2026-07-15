@@ -22,6 +22,10 @@ import {
   type Note,
   type PersonalAccount,
   type PersonalAccountCategory,
+  type PlannerHorizon,
+  type PlannerItem,
+  type PlannerScope,
+  type PlannerStatus,
   type Problem,
   type Reminder,
   type ReviewRating,
@@ -42,6 +46,7 @@ type FlashcardRow = typeof schema.flashcards.$inferSelect
 type MistakeRow = typeof schema.mistakes.$inferSelect
 type NoteRow = typeof schema.notes.$inferSelect
 type PersonalAccountRow = typeof schema.personalAccounts.$inferSelect
+type PlannerItemRow = typeof schema.plannerItems.$inferSelect
 type ProblemRow = typeof schema.problems.$inferSelect
 type ReminderRow = typeof schema.reminders.$inferSelect
 type RoadmapItemRow = typeof schema.roadmapItems.$inferSelect
@@ -58,6 +63,39 @@ const PERSONAL_ACCOUNT_CATEGORIES: PersonalAccountCategory[] = [
   'finance',
   'other',
 ]
+
+const PLANNER_HORIZONS: PlannerHorizon[] = ['now', 'next', 'later', 'someday']
+const PLANNER_STATUSES: PlannerStatus[] = ['open', 'doing', 'done', 'dropped']
+const PLANNER_SCOPES: PlannerScope[] = ['personal', 'project']
+const PLANNER_HORIZON_ORDER: Record<PlannerHorizon, number> = {
+  now: 0,
+  next: 1,
+  later: 2,
+  someday: 3,
+}
+
+function asPlannerHorizon(value: unknown): PlannerHorizon {
+  return PLANNER_HORIZONS.includes(value as PlannerHorizon) ? (value as PlannerHorizon) : 'later'
+}
+
+function asPlannerStatus(value: unknown): PlannerStatus {
+  return PLANNER_STATUSES.includes(value as PlannerStatus) ? (value as PlannerStatus) : 'open'
+}
+
+function asPlannerScope(value: unknown): PlannerScope {
+  return PLANNER_SCOPES.includes(value as PlannerScope) ? (value as PlannerScope) : 'personal'
+}
+
+function sortPlannerItems<T extends Pick<PlannerItem, 'horizon' | 'status' | 'updatedAt'>>(items: T[]) {
+  return [...items].sort((a, b) => {
+    const horizonDiff = PLANNER_HORIZON_ORDER[a.horizon] - PLANNER_HORIZON_ORDER[b.horizon]
+    if (horizonDiff !== 0) return horizonDiff
+    const aDone = a.status === 'done' || a.status === 'dropped'
+    const bDone = b.status === 'done' || b.status === 'dropped'
+    if (aDone !== bDone) return aDone ? 1 : -1
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  })
+}
 
 function asPersonalAccountCategory(value: unknown): PersonalAccountCategory {
   return PERSONAL_ACCOUNT_CATEGORIES.includes(value as PersonalAccountCategory)
@@ -224,6 +262,18 @@ function serializeReminder(row: ReminderRow): Reminder {
     ...row,
     remindAt: toIso(row.remindAt),
     completedAt: nullableIso(row.completedAt),
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  }
+}
+
+function serializePlannerItem(row: PlannerItemRow): PlannerItem {
+  return {
+    ...row,
+    scope: asPlannerScope(row.scope),
+    horizon: asPlannerHorizon(row.horizon),
+    status: asPlannerStatus(row.status),
+    targetDate: nullableIso(row.targetDate),
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
   }
@@ -1497,6 +1547,121 @@ export async function deleteReminder(userId: string, reminderId: string) {
     .delete(schema.reminders)
     .where(and(eq(schema.reminders.id, reminderId), eq(schema.reminders.userId, userId)))
     .returning({ id: schema.reminders.id })
+  return Boolean(row)
+}
+
+export type PlannerListFilters = {
+  status?: string
+  horizon?: string
+  scope?: string
+  project?: string
+  search?: string
+}
+
+function filterPlannerItems(items: PlannerItem[], filters: PlannerListFilters = {}) {
+  const query = filters.search?.toLowerCase()
+  const project = filters.project?.toLowerCase()
+
+  return sortPlannerItems(
+    items.filter((item) => {
+      if (filters.status && item.status !== filters.status) return false
+      if (filters.horizon && item.horizon !== filters.horizon) return false
+      if (filters.scope && item.scope !== filters.scope) return false
+      if (project && (item.projectName?.toLowerCase() ?? '') !== project) return false
+      if (
+        query &&
+        !item.title.toLowerCase().includes(query) &&
+        !(item.body?.toLowerCase().includes(query) ?? false)
+      ) {
+        return false
+      }
+      return true
+    }),
+  )
+}
+
+export async function listPlannerItems(userId: string, filters: PlannerListFilters = {}) {
+  const rows = await requireDb()
+    .select()
+    .from(schema.plannerItems)
+    .where(eq(schema.plannerItems.userId, userId))
+
+  return filterPlannerItems(rows.map(serializePlannerItem), filters)
+}
+
+export async function getPlannerItem(userId: string, plannerItemId: string) {
+  const [row] = await requireDb()
+    .select()
+    .from(schema.plannerItems)
+    .where(and(eq(schema.plannerItems.id, plannerItemId), eq(schema.plannerItems.userId, userId)))
+    .limit(1)
+  return row ? serializePlannerItem(row) : null
+}
+
+export async function createPlannerItem(userId: string, body: Record<string, unknown>) {
+  const title = typeof body.title === 'string' ? body.title.trim() : ''
+  if (!title) throw new Error('Title is required')
+
+  const scope = asPlannerScope(body.scope)
+  const projectName = optionalString(body.projectName)
+  if (scope === 'project' && !projectName) {
+    throw new Error('projectName is required when scope is project')
+  }
+
+  const [row] = await requireDb()
+    .insert(schema.plannerItems)
+    .values({
+      userId,
+      title,
+      body: optionalString(body.body),
+      scope,
+      projectName: scope === 'project' ? projectName : null,
+      horizon: asPlannerHorizon(body.horizon),
+      status: asPlannerStatus(body.status),
+      targetDate: optionalDate(body.targetDate) ?? null,
+    })
+    .returning()
+  return serializePlannerItem(row)
+}
+
+export async function updatePlannerItem(
+  userId: string,
+  plannerItemId: string,
+  body: Record<string, unknown>,
+) {
+  const current = await getPlannerItem(userId, plannerItemId)
+  if (!current) return null
+
+  const updates: Partial<typeof schema.plannerItems.$inferInsert> = { updatedAt: new Date() }
+  if (typeof body.title === 'string' && body.title.trim()) updates.title = body.title.trim()
+  if ('body' in body) updates.body = optionalString(body.body)
+  if ('scope' in body) updates.scope = asPlannerScope(body.scope)
+  if ('horizon' in body) updates.horizon = asPlannerHorizon(body.horizon)
+  if ('status' in body) updates.status = asPlannerStatus(body.status)
+  if ('projectName' in body) updates.projectName = optionalString(body.projectName)
+  if ('targetDate' in body) updates.targetDate = optionalDate(body.targetDate) ?? null
+
+  const scope = updates.scope ?? current.scope
+  const projectName =
+    'projectName' in body ? optionalString(body.projectName) : current.projectName
+  if (scope === 'project' && !projectName) {
+    throw new Error('projectName is required when scope is project')
+  }
+  updates.projectName = scope === 'project' ? projectName : null
+
+  const [row] = await requireDb()
+    .update(schema.plannerItems)
+    .set(updates)
+    .where(and(eq(schema.plannerItems.id, plannerItemId), eq(schema.plannerItems.userId, userId)))
+    .returning()
+  return row ? serializePlannerItem(row) : null
+}
+
+export async function deletePlannerItem(userId: string, plannerItemId: string) {
+  const [row] = await requireDb()
+    .delete(schema.plannerItems)
+    .where(and(eq(schema.plannerItems.id, plannerItemId), eq(schema.plannerItems.userId, userId)))
+    .returning({ id: schema.plannerItems.id })
   return Boolean(row)
 }
 
