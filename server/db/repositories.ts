@@ -263,6 +263,78 @@ function serializeDevAccount(row: DevAccountRow): DevAccount {
   }
 }
 
+/** Convert legacy single env_var rows into env_file blocks without losing values. */
+function envVarRowToEnvFileFields(row: Pick<DevAccountRow, 'name' | 'username' | 'password'>) {
+  const decrypted = decryptSecret(row.password)
+  const key = row.username.trim()
+  const looksLikeBlock = decrypted.includes('\n') || (decrypted.includes('=') && !key)
+  const content = looksLikeBlock ? decrypted : key ? `${key}=${decrypted}` : decrypted
+  return {
+    kind: 'env_file' as const,
+    username: '.env',
+    password: encryptSecret(content),
+    provider: null,
+    url: null,
+    name: row.name.trim() || key || 'Env file',
+  }
+}
+
+function normalizeDevAccountKind(kind: unknown): DevCredentialKind {
+  if (kind === 'env_var') return 'env_file'
+  return (kind as DevCredentialKind | undefined) ?? 'login'
+}
+
+function coerceDevAccountWrite(body: Record<string, unknown>) {
+  const rawKind = typeof body.kind === 'string' ? body.kind : 'login'
+  const environment = optionalString(body.environment) ?? 'dev'
+  let kind = normalizeDevAccountKind(rawKind)
+  let name = typeof body.name === 'string' ? body.name.trim() : ''
+  let username = typeof body.username === 'string' ? body.username.trim() : ''
+  let password = body.password !== undefined ? String(body.password) : ''
+  let provider = optionalString(body.provider)
+  let url = optionalString(body.url)
+  const description = optionalString(body.description)
+
+  if (rawKind === 'env_var') {
+    const looksLikeBlock = password.includes('\n') || (password.includes('=') && !username)
+    const key = username
+    password = looksLikeBlock ? password : key ? `${key}=${password}` : password
+    username = '.env'
+    provider = null
+    url = null
+    if (!name) name = key || (environment === 'prod' ? 'Production .env' : `${environment.toUpperCase()} .env`)
+  }
+
+  if (kind === 'env_file') {
+    username = username || '.env'
+    provider = null
+    url = null
+    if (!name) {
+      name = environment === 'prod' ? 'Production .env' : `${environment.toUpperCase()} .env`
+    }
+  }
+
+  return { kind, name, username, password, provider, url, description, environment }
+}
+
+async function migrateLegacyEnvVarAccounts(database: Database, rows: DevAccountRow[]) {
+  const legacy = rows.filter((row) => row.kind === 'env_var')
+  if (legacy.length === 0) return rows
+
+  const migratedById = new Map<string, DevAccountRow>()
+  for (const row of legacy) {
+    const fields = envVarRowToEnvFileFields(row)
+    const [updated] = await database
+      .update(schema.devAccounts)
+      .set({ ...fields, updatedAt: new Date() })
+      .where(eq(schema.devAccounts.id, row.id))
+      .returning()
+    if (updated) migratedById.set(row.id, updated)
+  }
+
+  return rows.map((row) => migratedById.get(row.id) ?? row)
+}
+
 function serializePersonalAccount(row: PersonalAccountRow): PersonalAccount {
   return {
     ...row,
@@ -989,9 +1061,10 @@ export async function listDevProjects(userId: string) {
         .where(inArray(schema.devAccounts.projectId, projectIds))
         .orderBy(schema.devAccounts.name)
     : []
+  const normalizedAccounts = await migrateLegacyEnvVarAccounts(database, accounts)
   return projects.map((project) => ({
     ...serializeDevProject(project),
-    accounts: accounts
+    accounts: normalizedAccounts
       .filter((account) => account.projectId === project.id)
       .map(serializeDevAccount),
   }))
@@ -1038,21 +1111,21 @@ export async function deleteDevProject(userId: string, projectId: string) {
 export async function createDevAccount(userId: string, projectId: string, body: Record<string, unknown>) {
   const project = await getDevProject(userId, projectId)
   if (!project) return null
+  const fields = coerceDevAccountWrite(body)
+  if (!fields.name || !fields.password) return null
+  if (fields.kind !== 'env_file' && !fields.username) return null
   const [row] = await requireDb()
     .insert(schema.devAccounts)
     .values({
       projectId,
-      kind: ((body.kind as DevCredentialKind | undefined) ?? 'login'),
-      provider: optionalString(body.provider),
-      environment: optionalString(body.environment) ?? 'dev',
-      name: String(body.name).trim(),
-      username:
-        body.kind === 'env_file'
-          ? (optionalString(body.username) ?? '.env')
-          : String(body.username).trim(),
-      password: encryptSecret(String(body.password)),
-      url: optionalString(body.url),
-      description: optionalString(body.description),
+      kind: fields.kind,
+      provider: fields.provider,
+      environment: fields.environment,
+      name: fields.name,
+      username: fields.username || '.env',
+      password: encryptSecret(fields.password),
+      url: fields.url,
+      description: fields.description,
     })
     .returning()
   return serializeDevAccount(row)
@@ -1066,18 +1139,37 @@ export async function updateDevAccount(
 ) {
   const project = await getDevProject(userId, projectId)
   if (!project) return null
-  const updates: Partial<typeof schema.devAccounts.$inferInsert> = { updatedAt: new Date() }
-  if (typeof body.kind === 'string') updates.kind = body.kind as DevCredentialKind
-  if ('provider' in body) updates.provider = optionalString(body.provider)
-  if (typeof body.environment === 'string') updates.environment = optionalString(body.environment) ?? 'dev'
-  if (typeof body.name === 'string') updates.name = body.name.trim()
-  if (typeof body.username === 'string') updates.username = body.username.trim()
-  if ('password' in body) updates.password = encryptSecret(String(body.password))
-  if ('url' in body) updates.url = optionalString(body.url)
-  if ('description' in body) updates.description = optionalString(body.description)
+  const [current] = await requireDb()
+    .select()
+    .from(schema.devAccounts)
+    .where(and(eq(schema.devAccounts.id, accountId), eq(schema.devAccounts.projectId, projectId)))
+    .limit(1)
+  if (!current) return null
+
+  const fields = coerceDevAccountWrite({
+    kind: body.kind ?? current.kind,
+    provider: 'provider' in body ? body.provider : current.provider,
+    environment: body.environment ?? current.environment,
+    name: body.name ?? current.name,
+    username: body.username ?? current.username,
+    password: 'password' in body ? body.password : decryptSecret(current.password),
+    url: 'url' in body ? body.url : current.url,
+    description: 'description' in body ? body.description : current.description,
+  })
+
   const [row] = await requireDb()
     .update(schema.devAccounts)
-    .set(updates)
+    .set({
+      updatedAt: new Date(),
+      kind: fields.kind,
+      provider: fields.provider,
+      environment: fields.environment,
+      name: fields.name,
+      username: fields.username || '.env',
+      password: encryptSecret(fields.password),
+      url: fields.url,
+      description: fields.description,
+    })
     .where(and(eq(schema.devAccounts.id, accountId), eq(schema.devAccounts.projectId, projectId)))
     .returning()
   return row ? serializeDevAccount(row) : null

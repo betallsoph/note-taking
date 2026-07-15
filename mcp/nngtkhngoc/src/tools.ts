@@ -44,7 +44,6 @@ const credentialKind = z.enum([
   'oauth_client',
   'webhook_secret',
   'ssh_key',
-  'env_var',
   'env_file',
 ])
 

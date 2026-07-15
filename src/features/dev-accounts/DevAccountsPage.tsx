@@ -7,6 +7,7 @@ import {
   Eye,
   EyeSlash,
   Copy,
+  Check,
   FolderSimple,
   Key,
   FileText,
@@ -48,7 +49,6 @@ const emptyAccount: AccountForm = {
 }
 
 const credentialTypes: Array<{ value: DevCredentialKind; label: string }> = [
-  { value: 'env_file', label: 'Env file (.env)' },
   { value: 'api_key', label: 'API Key' },
   { value: 'database', label: 'Database User' },
   { value: 'connection_string', label: 'Connection String' },
@@ -56,23 +56,34 @@ const credentialTypes: Array<{ value: DevCredentialKind; label: string }> = [
   { value: 'oauth_client', label: 'OAuth Client' },
   { value: 'webhook_secret', label: 'Webhook Secret' },
   { value: 'ssh_key', label: 'SSH Key' },
-  { value: 'env_var', label: 'Env Var' },
 ]
 
 const environments = ['dev', 'local', 'staging', 'qa', 'prod', 'sandbox'] as const
 
 function isEnvFileKind(kind?: string) {
-  return kind === 'env_file'
+  return kind === 'env_file' || kind === 'env_var'
+}
+
+function usesMultilineSecret(kind?: string) {
+  return kind === 'ssh_key' || kind === 'connection_string' || isEnvFileKind(kind)
 }
 
 function maskEnvContent(content: string) {
   return content
     .split('\n')
-    .map((line) => (line.trim() ? '••••••••••••' : ''))
+    .map((line) => {
+      const trimmed = line.trim()
+      if (!trimmed) return ''
+      if (trimmed.startsWith('#')) return line
+      const eq = line.indexOf('=')
+      if (eq === -1) return '••••••••••••'
+      return `${line.slice(0, eq + 1)}••••••••••••`
+    })
     .join('\n')
 }
 
 function credentialLabel(kind?: string) {
+  if (isEnvFileKind(kind)) return 'Env file (.env)'
   return credentialTypes.find((item) => item.value === kind)?.label ?? 'Entry'
 }
 
@@ -88,14 +99,6 @@ function entryCountLabel(count: number) {
   return `${count} ${count === 1 ? 'entry' : 'entries'}`
 }
 
-async function copyText(value: string) {
-  try {
-    await navigator.clipboard.writeText(value)
-  } catch {
-    // Clipboard may be unavailable in some environments; ignore quietly.
-  }
-}
-
 export function DevAccountsPage() {
   const queryClient = useQueryClient()
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
@@ -107,6 +110,7 @@ export function DevAccountsPage() {
   const [projectForm, setProjectForm] = useState<ProjectForm>(emptyProject)
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccount)
   const [visibleSecrets, setVisibleSecrets] = useState<Record<string, boolean>>({})
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const { data: projects, isLoading } = useQuery({
@@ -167,6 +171,28 @@ export function DevAccountsPage() {
   })
 
   const creatingNewProject = !editingAccount && projectChoice === NEW_PROJECT_VALUE
+  const envFileForm = isEnvFileKind(accountForm.kind)
+
+  useEffect(() => {
+    if (!copiedKey) return
+    const timer = window.setTimeout(() => setCopiedKey(null), 1200)
+    return () => window.clearTimeout(timer)
+  }, [copiedKey])
+
+  useEffect(() => {
+    if (selectedProjectId && projects && !selectedProject && !isLoading) {
+      setSelectedProjectId(null)
+    }
+  }, [selectedProjectId, projects, selectedProject, isLoading])
+
+  async function copyText(value: string, key?: string) {
+    try {
+      await navigator.clipboard.writeText(value)
+      if (key) setCopiedKey(key)
+    } catch {
+      // Clipboard may be unavailable in some environments; ignore quietly.
+    }
+  }
 
   function closeFormDialog() {
     setFormOpen(false)
@@ -186,10 +212,12 @@ export function DevAccountsPage() {
   function openAddForm(preferredProjectId?: string, options?: { kind?: DevCredentialKind }) {
     setEditingAccount(null)
     const kind = options?.kind ?? 'api_key'
+    const environment = isEnvFileKind(kind) ? 'prod' : 'dev'
     setAccountForm({
       ...emptyAccount,
       kind,
-      name: isEnvFileKind(kind) ? defaultEnvFileName('dev') : '',
+      environment,
+      name: isEnvFileKind(kind) ? defaultEnvFileName(environment) : '',
       username: isEnvFileKind(kind) ? '.env' : '',
     })
     setProjectForm(emptyProject)
@@ -211,12 +239,13 @@ export function DevAccountsPage() {
     setEditingAccount(account)
     setProjectChoice(projectId)
     setProjectForm(emptyProject)
+    const kind = isEnvFileKind(account.kind) ? 'env_file' : (account.kind ?? 'login')
     setAccountForm({
-      kind: account.kind ?? 'login',
+      kind,
       provider: account.provider ?? '',
       environment: account.environment ?? 'dev',
       name: account.name,
-      username: account.username,
+      username: isEnvFileKind(kind) ? '.env' : account.username,
       password: account.password,
       url: account.url ?? '',
       description: account.description ?? '',
@@ -269,11 +298,13 @@ export function DevAccountsPage() {
     e.preventDefault()
     const envFile = isEnvFileKind(accountForm.kind)
     const accountPayload = {
-      kind: accountForm.kind,
+      kind: envFile ? 'env_file' : accountForm.kind,
       provider: envFile ? null : accountForm.provider.trim() || null,
       environment: accountForm.environment,
-      name: accountForm.name.trim(),
-      username: envFile ? (accountForm.username.trim() || '.env') : accountForm.username.trim(),
+      name: envFile
+        ? accountForm.name.trim() || defaultEnvFileName(accountForm.environment)
+        : accountForm.name.trim(),
+      username: envFile ? '.env' : accountForm.username.trim(),
       password: accountForm.password,
       url: envFile ? null : accountForm.url.trim() || null,
       description: accountForm.description.trim() || null,
@@ -320,12 +351,6 @@ export function DevAccountsPage() {
 
   const formBusy = submitting || updateAccountMutation.isPending
   const viewingProject = Boolean(selectedProject)
-
-  useEffect(() => {
-    if (selectedProjectId && projects && !selectedProject && !isLoading) {
-      setSelectedProjectId(null)
-    }
-  }, [selectedProjectId, projects, selectedProject, isLoading])
 
   return (
     <div>
@@ -418,7 +443,7 @@ export function DevAccountsPage() {
           {(selectedProject.accounts?.length ?? 0) === 0 ? (
             <EmptyState
               title="No entries yet"
-              description="Paste a full .env file or add an API key / connection string for this project."
+              description="Paste a full .env block for this project, or add a single API key / login if you need one."
               action={
                 <Button onClick={() => openAddForm(selectedProject.id, { kind: 'env_file' })}>
                   Paste .env
@@ -430,6 +455,8 @@ export function DevAccountsPage() {
               {selectedProject.accounts?.map((account) => {
                 const showSecret = visibleSecrets[account.id]
                 const envFile = isEnvFileKind(account.kind)
+                const copyAllKey = `copy-all:${account.id}`
+                const copiedAll = copiedKey === copyAllKey
                 return (
                   <div key={account.id} className="rounded-md border px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
@@ -460,9 +487,17 @@ export function DevAccountsPage() {
                                 variant="outline"
                                 size="sm"
                                 className="h-7"
-                                onClick={() => copyText(account.password)}
+                                onClick={() => copyText(account.password, copyAllKey)}
                               >
-                                <Copy className="h-3.5 w-3.5" /> Copy all
+                                {copiedAll ? (
+                                  <>
+                                    <Check className="h-3.5 w-3.5" /> Copied
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="h-3.5 w-3.5" /> Copy all
+                                  </>
+                                )}
                               </Button>
                               <Button
                                 type="button"
@@ -497,15 +532,19 @@ export function DevAccountsPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
-                                onClick={() => copyText(account.username)}
+                                onClick={() => copyText(account.username, `user:${account.id}`)}
                                 title="Copy identifier"
                               >
-                                <Copy className="h-3.5 w-3.5" />
+                                {copiedKey === `user:${account.id}` ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Copy className="h-3.5 w-3.5" />
+                                )}
                               </Button>
                             </div>
                             <div className="flex min-w-0 items-center gap-2">
                               <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                Secret
+                                Value
                               </span>
                               <span className="truncate font-mono text-foreground">
                                 {showSecret ? account.password : '••••••••••••'}
@@ -516,7 +555,7 @@ export function DevAccountsPage() {
                                 size="icon"
                                 className="h-7 w-7"
                                 onClick={() => toggleSecret(account.id)}
-                                title={showSecret ? 'Hide secret' : 'Show secret'}
+                                title={showSecret ? 'Hide value' : 'Show value'}
                               >
                                 {showSecret ? (
                                   <EyeSlash className="h-3.5 w-3.5" />
@@ -529,10 +568,14 @@ export function DevAccountsPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
-                                onClick={() => copyText(account.password)}
-                                title="Copy secret"
+                                onClick={() => copyText(account.password, `pass:${account.id}`)}
+                                title="Copy value"
                               >
-                                <Copy className="h-3.5 w-3.5" />
+                                {copiedKey === `pass:${account.id}` ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Copy className="h-3.5 w-3.5" />
+                                )}
                               </Button>
                             </div>
                           </div>
@@ -549,10 +592,14 @@ export function DevAccountsPage() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => copyText(account.url ?? '')}
+                              onClick={() => copyText(account.url ?? '', `url:${account.id}`)}
                               title="Copy URL"
                             >
-                              <Copy className="h-3.5 w-3.5" />
+                              {copiedKey === `url:${account.id}` ? (
+                                <Check className="h-3.5 w-3.5" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
                             </Button>
                           </div>
                         )}
@@ -594,7 +641,7 @@ export function DevAccountsPage() {
       ) : projects?.length === 0 ? (
         <EmptyState
           title="No projects yet"
-          description="Create a project, then paste a .env file or add credentials inside it."
+          description="Create a project and paste its .env block, or add individual credentials later."
           action={
             <Button onClick={() => openAddForm(undefined, { kind: 'env_file' })}>Paste .env</Button>
           }
@@ -641,10 +688,10 @@ export function DevAccountsPage() {
           <DialogHeader>
             <DialogTitle>
               {editingAccount
-                ? isEnvFileKind(editingAccount.kind)
+                ? envFileForm
                   ? 'Edit .env file'
                   : 'Edit entry'
-                : isEnvFileKind(accountForm.kind)
+                : envFileForm
                   ? 'Paste .env file'
                   : 'New entry'}
             </DialogTitle>
@@ -677,49 +724,12 @@ export function DevAccountsPage() {
                       onChange={(e) => setProjectForm((f) => ({ ...f, name: e.target.value }))}
                       required
                     />
-                    <Textarea
-                      placeholder="Project notes, stack, links, or purpose"
-                      value={projectForm.description}
-                      onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
-                    />
                   </div>
                 )}
               </div>
             )}
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Type</label>
-                <Select
-                  value={accountForm.kind}
-                  onValueChange={(value) => {
-                    const kind = value as DevCredentialKind
-                    setAccountForm((form) => ({
-                      ...form,
-                      kind,
-                      username: isEnvFileKind(kind) ? '.env' : form.username,
-                      provider: isEnvFileKind(kind) ? '' : form.provider,
-                      url: isEnvFileKind(kind) ? '' : form.url,
-                      name:
-                        isEnvFileKind(kind) && !form.name.trim()
-                          ? defaultEnvFileName(form.environment)
-                          : form.name,
-                    }))
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {credentialTypes.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
+            {envFileForm ? (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Environment</label>
                 <Select
@@ -728,10 +738,7 @@ export function DevAccountsPage() {
                     setAccountForm((form) => ({
                       ...form,
                       environment: value,
-                      name:
-                        isEnvFileKind(form.kind) && !editingAccount
-                          ? defaultEnvFileName(value)
-                          : form.name,
+                      name: defaultEnvFileName(value),
                     }))
                   }
                 >
@@ -747,51 +754,111 @@ export function DevAccountsPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Type</label>
+                    <Select
+                      value={accountForm.kind}
+                      onValueChange={(value) => {
+                        const kind = value as DevCredentialKind
+                        setAccountForm((form) => ({
+                          ...form,
+                          kind,
+                        }))
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {credentialTypes.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-            {!isEnvFileKind(accountForm.kind) && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Input
-                  placeholder="Provider (MongoDB Atlas, Neon, Stripe)"
-                  value={accountForm.provider}
-                  onChange={(e) => setAccountForm((f) => ({ ...f, provider: e.target.value }))}
-                />
-                <Input
-                  placeholder="Console URL or docs URL"
-                  value={accountForm.url}
-                  onChange={(e) => setAccountForm((f) => ({ ...f, url: e.target.value }))}
-                />
-              </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Environment</label>
+                    <Select
+                      value={accountForm.environment}
+                      onValueChange={(value) =>
+                        setAccountForm((form) => ({ ...form, environment: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {environments.map((env) => (
+                          <SelectItem key={env} value={env}>
+                            {environmentLabel(env)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    placeholder="Provider (MongoDB Atlas, Neon, Stripe)"
+                    value={accountForm.provider}
+                    onChange={(e) => setAccountForm((f) => ({ ...f, provider: e.target.value }))}
+                  />
+                  <Input
+                    placeholder="Console URL or docs URL"
+                    value={accountForm.url}
+                    onChange={(e) => setAccountForm((f) => ({ ...f, url: e.target.value }))}
+                  />
+                </div>
+              </>
             )}
 
             <div className="space-y-3">
-              <Input
-                placeholder={
-                  isEnvFileKind(accountForm.kind)
-                    ? 'Label (Production .env, Vercel env)'
-                    : 'Name (Atlas database user, Stripe secret key)'
-                }
-                value={accountForm.name}
-                onChange={(e) => setAccountForm((f) => ({ ...f, name: e.target.value }))}
-                required
-              />
-              {!isEnvFileKind(accountForm.kind) && (
+              {!envFileForm && (
                 <>
                   <Input
-                    placeholder="Identifier (username, key id, env var name)"
+                    placeholder="Name (Atlas database user, Stripe secret key)"
+                    value={accountForm.name}
+                    onChange={(e) => setAccountForm((f) => ({ ...f, name: e.target.value }))}
+                    required
+                  />
+                  <Input
+                    placeholder="Identifier (username, key id)"
                     value={accountForm.username}
                     onChange={(e) => setAccountForm((f) => ({ ...f, username: e.target.value }))}
                     required
                   />
-                  <Input
-                    placeholder="Secret value / password / connection string"
-                    value={accountForm.password}
-                    onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
-                    required
-                  />
+                  {usesMultilineSecret(accountForm.kind) ? (
+                    <Textarea
+                      placeholder={
+                        accountForm.kind === 'ssh_key'
+                          ? 'Paste SSH private key'
+                          : 'Paste connection string'
+                      }
+                      value={accountForm.password}
+                      onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
+                      className="min-h-32 font-mono text-xs leading-relaxed"
+                      required
+                      spellCheck={false}
+                    />
+                  ) : (
+                    <Input
+                      placeholder="Secret value / password"
+                      value={accountForm.password}
+                      onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
+                      required
+                    />
+                  )}
                 </>
               )}
-              {isEnvFileKind(accountForm.kind) && (
+
+              {envFileForm && (
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Paste full .env block</label>
                   <Textarea
@@ -803,15 +870,17 @@ export function DevAccountsPage() {
                     spellCheck={false}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Paste the whole block from your IDE or Vercel. Use Copy all to paste it elsewhere later.
+                    Paste the whole block from your IDE or Vercel. Use Copy all later to paste it
+                    elsewhere.
                   </p>
                 </div>
               )}
+
               <Textarea
                 placeholder={
-                  isEnvFileKind(accountForm.kind)
+                  envFileForm
                     ? 'Notes (optional): which deploy, last rotated, etc.'
-                    : 'Notes: IP allowlist, role, created by, rotation date, usage'
+                    : 'Notes (optional): IP allowlist, role, rotation date'
                 }
                 value={accountForm.description}
                 onChange={(e) => setAccountForm((f) => ({ ...f, description: e.target.value }))}
@@ -822,10 +891,10 @@ export function DevAccountsPage() {
               {editingAccount
                 ? 'Save'
                 : creatingNewProject
-                  ? isEnvFileKind(accountForm.kind)
+                  ? envFileForm
                     ? 'Create project & save .env'
                     : 'Create project & entry'
-                  : isEnvFileKind(accountForm.kind)
+                  : envFileForm
                     ? 'Save .env'
                     : 'Create entry'}
             </Button>
@@ -852,7 +921,7 @@ export function DevAccountsPage() {
               required
             />
             <Textarea
-              placeholder="Project notes, stack, links, or purpose"
+              placeholder="Project notes, stack, links, or purpose (optional)"
               value={projectForm.description}
               onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
             />
