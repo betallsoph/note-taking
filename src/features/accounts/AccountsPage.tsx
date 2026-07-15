@@ -158,7 +158,6 @@ export function AccountsPage() {
     <div>
       <PageHeader
         title="Accounts"
-        description="Personal logins — email, school, social, streaming. Dev secrets stay in Dev Vault."
         actions={
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />

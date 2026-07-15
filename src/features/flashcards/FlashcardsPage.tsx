@@ -44,7 +44,6 @@ export function FlashcardsPage() {
     <div>
       <PageHeader
         title="Flashcards"
-        description="Interview questions and definitions"
         actions={<Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New Card</Button>}
       />
 

@@ -17,7 +17,6 @@ export function InterviewHubPage() {
     <div>
       <PageHeader
         title="Interview Hub"
-        description="Question bank for technical interviews"
       />
 
       <div className="mb-6 flex flex-wrap gap-2">
