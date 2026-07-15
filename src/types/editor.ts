@@ -2,7 +2,7 @@ import type { Editor } from '@tiptap/core'
 
 export interface RichTextEditorProps {
   content: string
-  onChange: (content: string) => void
+  onChange: (content: string) => void | Promise<void>
   editable?: boolean
   placeholder?: string
   className?: string
@@ -12,7 +12,7 @@ export interface RichTextEditorProps {
   autoSaveDelay?: number
 }
 
-export type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'saved'
+export type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
 export interface SlashCommandItem {
   title: string

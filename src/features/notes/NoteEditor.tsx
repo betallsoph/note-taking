@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
 import { RichTextEditor } from '@/components/editor'
 import { contentToMarkdown, markdownToContent } from '@/utils/markdown'
+import type { Note } from '@/types'
 
 interface Props {
   noteId: string
@@ -16,15 +17,16 @@ export function NoteEditor({ noteId, content }: Props) {
   const updateMutation = useMutation({
     mutationFn: (newContent: { markdown: string }) =>
       api.notes.update(noteId, { content: newContent }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['note', noteId] })
-      queryClient.invalidateQueries({ queryKey: ['notes'] })
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Note>(['note', noteId], updated)
+      // Soft-refresh list metadata without forcing this editor to remount.
+      queryClient.invalidateQueries({ queryKey: ['notes'], refetchType: 'none' })
     },
   })
 
   const handleChange = useCallback(
-    (updated: string) => {
-      updateMutation.mutate(markdownToContent(updated))
+    async (updated: string) => {
+      await updateMutation.mutateAsync(markdownToContent(updated))
     },
     [updateMutation],
   )
