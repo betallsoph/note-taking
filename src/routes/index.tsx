@@ -15,6 +15,7 @@ import { AccountsPage } from '@/features/accounts/AccountsPage'
 import { NotesPage } from '@/features/notes/NotesPage'
 import { NoteDetailPage } from '@/features/notes/NoteDetailPage'
 import { RemindersPage } from '@/features/reminders/RemindersPage'
+import { PlannerPage } from '@/features/planner/PlannerPage'
 
 export const router = createBrowserRouter([
   {
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
       { path: 'notes', element: <NotesPage /> },
       { path: 'notes/:id', element: <NoteDetailPage /> },
       { path: 'reminders', element: <RemindersPage /> },
+      { path: 'planner', element: <PlannerPage /> },
       { path: 'dsa', element: <DsaVisualizerPage /> },
       { path: 'problems', element: <ProblemsPage /> },
       { path: 'problems/:id', element: <ProblemDetailPage /> },

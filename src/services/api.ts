@@ -172,6 +172,21 @@ export const api = {
       }),
     delete: (id: string) => request<void>(`/accounts/${id}`, { method: 'DELETE' }),
   },
+  planner: {
+    list: (params?: Record<string, string>) => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+      return request<import('@/types').PlannerItem[]>(`/planner${qs}`)
+    },
+    get: (id: string) => request<import('@/types').PlannerItem>(`/planner/${id}`),
+    create: (data: Partial<import('@/types').PlannerItem>) =>
+      request<import('@/types').PlannerItem>('/planner', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<import('@/types').PlannerItem>) =>
+      request<import('@/types').PlannerItem>(`/planner/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) => request<void>(`/planner/${id}`, { method: 'DELETE' }),
+  },
   reminders: {
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''

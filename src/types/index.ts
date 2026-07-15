@@ -226,6 +226,23 @@ export interface Reminder {
   updatedAt: string
 }
 
+export type PlannerHorizon = 'now' | 'next' | 'later' | 'someday'
+export type PlannerStatus = 'open' | 'doing' | 'done' | 'dropped'
+export type PlannerScope = 'personal' | 'project'
+
+export interface PlannerItem {
+  id: string
+  userId: string
+  title: string
+  body: string | null
+  scope: PlannerScope
+  projectName: string | null
+  horizon: PlannerHorizon
+  status: PlannerStatus
+  targetDate: string | null
+  createdAt: string
+  updatedAt: string
+}
 export interface DashboardStats {
   totalArticles: number
   totalProblems: number

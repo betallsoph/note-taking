@@ -203,6 +203,24 @@ export interface Reminder {
   updatedAt: string
 }
 
+export type PlannerHorizon = 'now' | 'next' | 'later' | 'someday'
+export type PlannerStatus = 'open' | 'doing' | 'done' | 'dropped'
+export type PlannerScope = 'personal' | 'project'
+
+export interface PlannerItem {
+  id: string
+  userId: string
+  title: string
+  body: string | null
+  scope: PlannerScope
+  projectName: string | null
+  horizon: PlannerHorizon
+  status: PlannerStatus
+  targetDate: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface DashboardStats {
   totalArticles: number
   totalProblems: number
@@ -243,6 +261,7 @@ class MockStore {
   roadmapItems: RoadmapItem[] = []
   notes: Note[] = []
   reminders: Reminder[] = []
+  plannerItems: PlannerItem[] = []
   personalAccounts: PersonalAccount[] = []
   devProjects: DevProject[] = []
   devAccounts: DevAccount[] = []
@@ -505,6 +524,48 @@ class MockStore {
 
     const inTwoHours = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    this.plannerItems = [
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Build habit tracker app',
+        body: 'Simple Flutter or React Native app — mood + streaks, no backend at first',
+        scope: 'personal',
+        projectName: null,
+        horizon: 'someday',
+        status: 'open',
+        targetDate: null,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Wire up push notifications',
+        body: 'FCM for Android + APNs stub; tie into reminder service',
+        scope: 'project',
+        projectName: 'roomieVerse',
+        horizon: 'now',
+        status: 'doing',
+        targetDate: null,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      {
+        id: id(),
+        userId: user.id,
+        title: 'Migrate auth to OAuth2 PKCE',
+        body: null,
+        scope: 'project',
+        projectName: 'CS Hub',
+        horizon: 'later',
+        status: 'open',
+        targetDate: '2026-09-01',
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ]
+
     this.reminders = [
       {
         id: id(),

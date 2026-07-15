@@ -11,6 +11,7 @@ import {
   Key,
   NotePencil,
   Bell,
+  Compass,
   IdentificationCard,
   SidebarSimple,
   Moon,
@@ -42,6 +43,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/notes', label: 'Notes', icon: NotePencil },
       { to: '/reminders', label: 'Reminders', icon: Bell },
+      { to: '/planner', label: 'Planner', icon: Compass },
       { to: '/accounts', label: 'Accounts', icon: IdentificationCard },
       { to: '/dev-accounts', label: 'Dev Vault', icon: Key },
     ],
