@@ -1,4 +1,4 @@
-import { isDatabaseEnabled } from './repositories.js'
+import { isDatabaseEnabled } from './index.js'
 import { isMongoEnabled } from './mongo.js'
 
 /** Where Notes are read/written. `backup` = Neon primary + async Mongo copy. */
@@ -30,9 +30,9 @@ export function resolveNotesStoreMode(): NotesStoreMode {
     return isDatabaseEnabled() ? 'neon' : 'mock'
   }
 
-  // Default: Neon for Notes when available; Mongo only when Neon is absent.
-  if (isDatabaseEnabled()) return 'neon'
+  // Default: Atlas when MONGODB_URI is set; else Neon; else mock. No runtime probing.
   if (isMongoEnabled()) return 'atlas'
+  if (isDatabaseEnabled()) return 'neon'
   return 'mock'
 }
 

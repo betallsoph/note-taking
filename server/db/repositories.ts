@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { and, desc, eq, inArray, lte } from 'drizzle-orm'
 import { db, type Database } from './index.js'
 import { getPgError, isMissingRelation } from './pg-error.js'
+import { resolveNotesStoreMode } from './notes-config.js'
 import * as schema from './schema.js'
 import { MOCK_USER, type AuthUser } from '../middleware/auth.js'
 import {
@@ -68,9 +69,7 @@ function requireDb(): Database {
   return db
 }
 
-export function isDatabaseEnabled() {
-  return db !== null
-}
+export { isDatabaseEnabled } from './index.js'
 
 function toIso(value: Date | string) {
   return value instanceof Date ? value.toISOString() : value
@@ -340,6 +339,8 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
   const endOfToday = new Date()
   endOfToday.setHours(23, 59, 59, 999)
 
+  const skipNeonNotes = resolveNotesStoreMode() === 'atlas'
+
   const [articleRows, problemRows, flashcardRows, roadmapRows, noteRows, reminderRows] =
     await Promise.all([
       database
@@ -350,7 +351,9 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
       database.select().from(schema.problems).where(eq(schema.problems.userId, userId)),
       database.select().from(schema.flashcards).where(eq(schema.flashcards.userId, userId)),
       database.select().from(schema.roadmaps).where(eq(schema.roadmaps.userId, userId)),
-      database.select().from(schema.notes).where(eq(schema.notes.userId, userId)),
+      skipNeonNotes
+        ? Promise.resolve([])
+        : database.select().from(schema.notes).where(eq(schema.notes.userId, userId)),
       database.select().from(schema.reminders).where(eq(schema.reminders.userId, userId)),
     ])
   const tagIds = await articleTagMap(database, articleRows.map((article) => article.id))

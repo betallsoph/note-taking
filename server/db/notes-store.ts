@@ -263,6 +263,18 @@ export async function deleteNoteAnywhere(userId: string, noteId: string) {
 }
 
 export async function countNotesAnywhere(userId: string) {
+  const mode = resolveNotesStoreMode()
+
+  if (mode === 'atlas') {
+    try {
+      const { countMongoNotes } = await import('./mongo-notes.js')
+      return await countMongoNotes(userId)
+    } catch (error) {
+      console.error('Atlas count notes failed:', error)
+      if (process.env.NODE_ENV === 'production') throw error
+    }
+  }
+
   try {
     const notes = await listNotesAnywhere(userId)
     return notes.length

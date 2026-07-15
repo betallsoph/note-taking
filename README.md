@@ -101,7 +101,7 @@ server/
 - Feature-based folder structure for scalability
 - Mock auth middleware injects a demo user; swap for JWT or session auth when needed
 - Routes use Neon/Drizzle when `DATABASE_URL` exists and mock data otherwise
-- Free-form **Notes** use Neon by default (`NOTES_STORE=neon`); Atlas is optional (`atlas` or `backup`)
+- Free-form **Notes** use MongoDB Atlas by default when `MONGODB_URI` is set (`NOTES_STORE=atlas`); Neon optional for other data
 - Dev Vault groups credentials by project and can encrypt secrets with `SECRET_ENCRYPTION_KEY`
 - All user-owned records are scoped by `userId`
 - All DSA visualizations are generated from discrete state transitions
@@ -124,7 +124,7 @@ Set these in Vercel Project Settings:
 DATABASE_URL="postgresql://...-pooler...neon.tech/...?...sslmode=require"
 MONGODB_URI="mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
 MONGODB_DB_NAME="cs_hub"
-NOTES_STORE="neon"
+NOTES_STORE="atlas"
 SECRET_ENCRYPTION_KEY="replace-with-a-long-random-value"
 APP_ACCESS_TOKEN="replace-with-another-long-random-value"
 NODE_ENV="production"
@@ -136,9 +136,9 @@ Use the Neon pooled connection string for serverless deployments. Keep `SECRET_E
 
 | `NOTES_STORE` | Behavior |
 |---------------|----------|
-| `neon` (default when `DATABASE_URL` is set) | Notes on Neon only — Mongo is not queried on reads |
-| `atlas` | Notes on MongoDB Atlas only (Atlas Search, no Neon notes table) |
-| `backup` | Neon primary; writes are copied to Atlas asynchronously |
+| `atlas` (default when `MONGODB_URI` is set) | Notes on MongoDB Atlas — Atlas Search, no Neon notes reads |
+| `neon` | Notes on Neon only — set explicitly when you want Postgres for notes |
+| `backup` | Neon primary; writes copied to Atlas asynchronously |
 
 `GET /api/health` shows `notesStore`, `notesStoreMode`, and `mongoNotesBackup`.
 
@@ -209,10 +209,10 @@ Until the Search index exists, note search still works via regex fallback. After
 
 ### Notes storage modes
 
-Set `NOTES_STORE` explicitly — Mongo is **not** probed on every Notes request anymore:
+Set `NOTES_STORE` explicitly — Mongo is **not** probed on every Notes request:
 
-1. `neon` (default when `DATABASE_URL` is set) → Neon only; fast reads, Mongo ignored unless `backup`
-2. `atlas` → MongoDB Atlas only for Notes (set `MONGODB_URI`, no Neon notes reads)
+1. `atlas` (default when `MONGODB_URI` is set) → MongoDB Atlas for Notes + Atlas Search
+2. `neon` → Neon only (Reminders / Knowledge stay on Neon either way)
 3. `backup` → Neon primary + async Atlas copy on writes
 
 Reminders / Knowledge / Flashcards always stay on Neon.
