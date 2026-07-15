@@ -21,17 +21,23 @@ export function NotesPage() {
     if (search.trim()) params.search = search.trim()
     if (tag) params.tag = tag
     if (showArchived) params.archived = 'true'
-    return Object.keys(params).length ? params : undefined
+    return params
   }, [search, tag, showArchived])
 
+  const chipParams = useMemo(
+    () => (showArchived ? { archived: 'true' } : {}),
+    [showArchived],
+  )
+
   const { data: notes, isLoading } = useQuery({
-    queryKey: ['notes', listParams ?? {}],
-    queryFn: () => api.notes.list(listParams),
+    queryKey: ['notes', 'list', listParams],
+    queryFn: () => api.notes.list(Object.keys(listParams).length ? listParams : undefined),
   })
 
   const { data: tagSource } = useQuery({
-    queryKey: ['notes', { archived: showArchived ? 'true' : undefined }],
+    queryKey: ['notes', 'chips', chipParams],
     queryFn: () => api.notes.list(showArchived ? { archived: 'true' } : undefined),
+    staleTime: 60_000,
   })
 
   const availableTags = useMemo(() => {
@@ -185,7 +191,7 @@ export function NotesPage() {
               </Link>
               {(note.tags?.length ?? 0) > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1">
-                  {note.tags.map((t) => (
+                  {(note.tags ?? []).map((t) => (
                     <span
                       key={t}
                       className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground"

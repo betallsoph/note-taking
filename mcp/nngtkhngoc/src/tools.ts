@@ -17,6 +17,7 @@ import {
   listTags,
   searchEverything,
 } from '../../../server/db/repositories.js'
+import { countNotesAnywhere } from '../../../server/db/notes-store.js'
 import {
   approveProposal,
   createProposal,
@@ -171,7 +172,9 @@ export function registerTools(server: McpServer) {
   server.registerTool('get_dashboard', { description: 'Dashboard stats from Neon.' }, async () => {
     try {
       await ensureDatabaseUser()
-      return jsonResult(await getDashboardStats(userId))
+      const stats = await getDashboardStats(userId)
+      stats.totalNotes = await countNotesAnywhere(userId)
+      return jsonResult(stats)
     } catch (error) {
       return errorResult(error)
     }
