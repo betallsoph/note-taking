@@ -103,6 +103,7 @@ export interface Flashcard {
   answer: string
   difficulty: Difficulty
   personalNotes: string | null
+  sourceNoteId: string | null
   nextReviewAt: string | null
   reviewIntervalDays: number
   reviewCount: number
@@ -402,6 +403,7 @@ class MockStore {
         answer: 'Multi-Version Concurrency Control allows multiple transactions to read and write concurrently without blocking by maintaining multiple versions of data.',
         difficulty: 'medium',
         personalNotes: 'Used by PostgreSQL',
+        sourceNoteId: null,
         nextReviewAt: new Date().toISOString(),
         reviewIntervalDays: 1,
         reviewCount: 0,
@@ -416,6 +418,7 @@ class MockStore {
         answer: 'A situation where two or more processes are blocked forever, each waiting for a resource held by another.',
         difficulty: 'easy',
         personalNotes: null,
+        sourceNoteId: null,
         nextReviewAt: new Date(Date.now() + 86400000).toISOString(),
         reviewIntervalDays: 3,
         reviewCount: 1,

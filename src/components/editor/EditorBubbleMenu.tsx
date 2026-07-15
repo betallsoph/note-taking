@@ -1,13 +1,14 @@
 import type { Editor } from '@tiptap/core'
 import { BubbleMenu } from '@tiptap/react'
-import { TextB, TextItalic, TextUnderline, Code, Link as LinkIcon } from '@phosphor-icons/react'
+import { TextB, TextItalic, TextUnderline, Code, Link as LinkIcon, Cards } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 
 interface EditorBubbleMenuProps {
   editor: Editor
+  onAddFlashcard?: (selectedText: string) => void
 }
 
-export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
+export function EditorBubbleMenu({ editor, onAddFlashcard }: EditorBubbleMenuProps) {
   return (
     <BubbleMenu
       editor={editor}
@@ -67,6 +68,23 @@ export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
       >
         <LinkIcon className="h-4 w-4" />
       </Button>
+      {onAddFlashcard && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => {
+            const { from, to } = editor.state.selection
+            const text = editor.state.doc.textBetween(from, to, '\n').trim()
+            if (text) onAddFlashcard(text)
+          }}
+          aria-label="Add flashcard"
+          title="Add flashcard"
+        >
+          <Cards className="h-4 w-4" />
+        </Button>
+      )}
     </BubbleMenu>
   )
 }

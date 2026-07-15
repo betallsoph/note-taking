@@ -213,6 +213,7 @@ export const flashcards = pgTable(
     answer: text('answer').notNull(),
     difficulty: difficultyEnum('difficulty').notNull().default('medium'),
     personalNotes: text('personal_notes'),
+    sourceNoteId: text('source_note_id'),
     nextReviewAt: timestamp('next_review_at', { withTimezone: true }),
     reviewIntervalDays: integer('review_interval_days').notNull().default(1),
     reviewCount: integer('review_count').notNull().default(0),

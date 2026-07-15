@@ -70,7 +70,7 @@ router.post('/', async (req, res) => {
     return res.status(201).json(card)
   }
 
-  const { category, question, answer, difficulty, personalNotes } = req.body
+  const { category, question, answer, difficulty, personalNotes, sourceNoteId } = req.body
   const card = {
     id: id(),
     userId: req.user.id,
@@ -79,6 +79,7 @@ router.post('/', async (req, res) => {
     answer,
     difficulty: (difficulty ?? 'medium') as Difficulty,
     personalNotes: personalNotes ?? null,
+    sourceNoteId: typeof sourceNoteId === 'string' && sourceNoteId.trim() ? sourceNoteId.trim() : null,
     nextReviewAt: new Date().toISOString(),
     reviewIntervalDays: 1,
     reviewCount: 0,

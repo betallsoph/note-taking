@@ -56,6 +56,7 @@ export function RichTextEditor({
   showToolbar = true,
   showSearch = true,
   autoSaveDelay = 1000,
+  onAddFlashcard,
 }: RichTextEditorProps) {
   const [draft, setDraft] = useState(content)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -171,7 +172,7 @@ export function RichTextEditor({
         <EditorSearchBar editor={editor} open={searchOpen} onClose={() => setSearchOpen(false)} />
       )}
       <div className="relative">
-        {editable && <EditorBubbleMenu editor={editor} />}
+        {editable && <EditorBubbleMenu editor={editor} onAddFlashcard={onAddFlashcard} />}
         {editable && <EditorFloatingMenu editor={editor} />}
         <EditorContent editor={editor} />
         {editable && slashOpen && <SlashCommandMenu open={slashOpen} props={slashProps} />}
