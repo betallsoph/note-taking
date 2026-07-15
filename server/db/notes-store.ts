@@ -62,7 +62,7 @@ function filterMockNotes(userId: string, filters: NoteListFilters) {
   if (filters.pinned === 'true') items = items.filter((n) => n.isPinned)
   if (filters.tag) {
     const tag = filters.tag.toLowerCase()
-    items = items.filter((n) => n.tags.includes(tag))
+    items = items.filter((n) => (n.tags ?? []).includes(tag))
   }
   if (filters.search) {
     const q = filters.search.toLowerCase()
@@ -72,7 +72,7 @@ function filterMockNotes(userId: string, filters: NoteListFilters) {
       return (
         n.title.toLowerCase().includes(q) ||
         markdown.includes(q) ||
-        n.tags.some((t) => t.includes(q))
+        (n.tags ?? []).some((t) => t.includes(q))
       )
     })
   }

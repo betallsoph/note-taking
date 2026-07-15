@@ -372,7 +372,8 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
     totalProblems: problemRows.length,
     totalFlashcards: flashcardRows.length,
     totalRoadmaps: roadmapRows.length,
-    totalNotes: noteRows.length,
+    // When NOTES_STORE=atlas this is 0; HTTP/MCP callers overwrite via countNotesAnywhere.
+    totalNotes: noteRows.filter((note) => !note.isArchived).length,
     topicsCompleted: articleRows.filter((article) => article.status === 'completed').length,
     learningStreak: 7,
     reviewDueToday: flashcardRows.filter(

@@ -29,8 +29,14 @@ export function RemindersPage() {
 
   const params = statusFilter !== 'all' ? { status: statusFilter } : undefined
   const { data: reminders, isLoading } = useQuery({
-    queryKey: ['reminders', params],
+    queryKey: ['reminders', params ?? {}],
     queryFn: () => api.reminders.list(params),
+  })
+
+  const { data: allReminders } = useQuery({
+    queryKey: ['reminders', 'counts'],
+    queryFn: () => api.reminders.list(),
+    staleTime: 30_000,
   })
 
   const invalidate = () => {
@@ -63,13 +69,13 @@ export function RemindersPage() {
   })
 
   const counts = useMemo(() => {
-    const items = reminders ?? []
+    const items = allReminders ?? []
     return {
       overdue: items.filter((r) => reminderTone(r) === 'overdue').length,
       upcoming: items.filter((r) => reminderTone(r) === 'upcoming').length,
       completed: items.filter((r) => r.isCompleted).length,
     }
-  }, [reminders])
+  }, [allReminders])
 
   function resetForm() {
     setTitle('')
