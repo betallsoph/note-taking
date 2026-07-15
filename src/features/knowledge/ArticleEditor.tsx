@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
 import { RichTextEditor } from '@/components/editor'
 import { contentToMarkdown, markdownToContent } from '@/utils/markdown'
+import type { Article } from '@/types'
 
 interface Props {
   articleId: string
@@ -16,12 +17,14 @@ export function ArticleEditor({ articleId, content }: Props) {
   const updateMutation = useMutation({
     mutationFn: (newContent: { markdown: string }) =>
       api.articles.update(articleId, { content: newContent }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['article', articleId] }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Article>(['article', articleId], updated)
+    },
   })
 
   const handleChange = useCallback(
-    (updated: string) => {
-      updateMutation.mutate(markdownToContent(updated))
+    async (updated: string) => {
+      await updateMutation.mutateAsync(markdownToContent(updated))
     },
     [updateMutation],
   )

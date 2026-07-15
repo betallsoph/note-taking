@@ -29,10 +29,18 @@ function AutosaveIndicator({ status }: { status: AutosaveStatus }) {
       ? 'Saving…'
       : status === 'saved'
         ? 'Saved'
-        : ''
+        : status === 'error'
+          ? 'Save failed'
+          : ''
   if (!label) return null
   return (
-    <span className="text-xs text-muted-foreground" aria-live="polite">
+    <span
+      className={cn(
+        'text-xs',
+        status === 'error' ? 'text-destructive' : 'text-muted-foreground',
+      )}
+      aria-live="polite"
+    >
       {label}
     </span>
   )
@@ -53,6 +61,7 @@ export function RichTextEditor({
   const [searchOpen, setSearchOpen] = useState(false)
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashProps, setSlashProps] = useState<SuggestionProps<SlashCommandItem> | null>(null)
+  const lastExternalContent = useRef(content)
 
   const autosaveStatus = useEditorAutosave(draft, onChange, autoSaveDelay)
 
@@ -102,14 +111,22 @@ export function RichTextEditor({
     editor.setEditable(editable)
   }, [editor, editable])
 
+  // Only apply external content updates (e.g. refetch while unfocused).
+  // Never reset from draft changes — that wiped keystrokes (content !== draft while typing).
   useEffect(() => {
     if (!editor) return
+    if (content === lastExternalContent.current) return
+    lastExternalContent.current = content
+
+    // Don't clobber in-progress typing when autosave writes the query cache.
+    if (editor.isFocused) return
+
     const current = getEditorMarkdown(editor)
-    if (content !== current && content !== draft) {
-      editor.commands.setContent(preprocessMarkdownForEditor(content), false)
-      setDraft(content)
-    }
-  }, [content, editor, draft])
+    if (content === current) return
+
+    editor.commands.setContent(preprocessMarkdownForEditor(content), false)
+    setDraft(content)
+  }, [content, editor])
 
   useEffect(() => {
     const onUpdate = (event: Event) => {
