@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -7,16 +7,18 @@ import {
   Eye,
   EyeSlash,
   Copy,
+  Check,
   FolderSimple,
   Key,
   FileText,
+  ArrowLeft,
+  CaretRight,
 } from '@phosphor-icons/react'
 import { api } from '@/services/api'
 import { PageHeader, EmptyState, Skeleton } from '@/components/ui/misc'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import type { DevAccount, DevCredentialKind, DevProject } from '@/types'
@@ -47,7 +49,6 @@ const emptyAccount: AccountForm = {
 }
 
 const credentialTypes: Array<{ value: DevCredentialKind; label: string }> = [
-  { value: 'env_file', label: 'Env file (.env)' },
   { value: 'api_key', label: 'API Key' },
   { value: 'database', label: 'Database User' },
   { value: 'connection_string', label: 'Connection String' },
@@ -55,24 +56,35 @@ const credentialTypes: Array<{ value: DevCredentialKind; label: string }> = [
   { value: 'oauth_client', label: 'OAuth Client' },
   { value: 'webhook_secret', label: 'Webhook Secret' },
   { value: 'ssh_key', label: 'SSH Key' },
-  { value: 'env_var', label: 'Env Var' },
 ]
 
 const environments = ['dev', 'local', 'staging', 'qa', 'prod', 'sandbox'] as const
 
 function isEnvFileKind(kind?: string) {
-  return kind === 'env_file'
+  return kind === 'env_file' || kind === 'env_var'
+}
+
+function usesMultilineSecret(kind?: string) {
+  return kind === 'ssh_key' || kind === 'connection_string' || isEnvFileKind(kind)
 }
 
 function maskEnvContent(content: string) {
   return content
     .split('\n')
-    .map((line) => (line.trim() ? '••••••••••••' : ''))
+    .map((line) => {
+      const trimmed = line.trim()
+      if (!trimmed) return ''
+      if (trimmed.startsWith('#')) return line
+      const eq = line.indexOf('=')
+      if (eq === -1) return '••••••••••••'
+      return `${line.slice(0, eq + 1)}••••••••••••`
+    })
     .join('\n')
 }
 
 function credentialLabel(kind?: string) {
-  return credentialTypes.find((item) => item.value === kind)?.label ?? 'Secret'
+  if (isEnvFileKind(kind)) return 'Env file (.env)'
+  return credentialTypes.find((item) => item.value === kind)?.label ?? 'Entry'
 }
 
 function environmentLabel(value?: string) {
@@ -83,16 +95,13 @@ function defaultEnvFileName(environment: string) {
   return environment === 'prod' ? 'Production .env' : `${environmentLabel(environment)} .env`
 }
 
-async function copyText(value: string) {
-  try {
-    await navigator.clipboard.writeText(value)
-  } catch {
-    // Clipboard may be unavailable in some environments; ignore quietly.
-  }
+function entryCountLabel(count: number) {
+  return `${count} ${count === 1 ? 'entry' : 'entries'}`
 }
 
 export function DevAccountsPage() {
   const queryClient = useQueryClient()
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<DevProject | null>(null)
@@ -101,6 +110,7 @@ export function DevAccountsPage() {
   const [projectForm, setProjectForm] = useState<ProjectForm>(emptyProject)
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccount)
   const [visibleSecrets, setVisibleSecrets] = useState<Record<string, boolean>>({})
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const { data: projects, isLoading } = useQuery({
@@ -108,10 +118,15 @@ export function DevAccountsPage() {
     queryFn: api.devAccounts.listProjects,
   })
 
+  const selectedProject = useMemo(
+    () => projects?.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
+  )
+
   const vaultStats = useMemo(() => {
     const projectCount = projects?.length ?? 0
-    const secretCount = projects?.reduce((sum, project) => sum + (project.accounts?.length ?? 0), 0) ?? 0
-    return { projectCount, secretCount }
+    const entryCount = projects?.reduce((sum, project) => sum + (project.accounts?.length ?? 0), 0) ?? 0
+    return { projectCount, entryCount }
   }, [projects])
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dev-accounts'] })
@@ -127,7 +142,10 @@ export function DevAccountsPage() {
 
   const deleteProjectMutation = useMutation({
     mutationFn: api.devAccounts.deleteProject,
-    onSuccess: invalidate,
+    onSuccess: (_data, projectId) => {
+      if (selectedProjectId === projectId) setSelectedProjectId(null)
+      invalidate()
+    },
   })
 
   const updateAccountMutation = useMutation({
@@ -153,6 +171,28 @@ export function DevAccountsPage() {
   })
 
   const creatingNewProject = !editingAccount && projectChoice === NEW_PROJECT_VALUE
+  const envFileForm = isEnvFileKind(accountForm.kind)
+
+  useEffect(() => {
+    if (!copiedKey) return
+    const timer = window.setTimeout(() => setCopiedKey(null), 1200)
+    return () => window.clearTimeout(timer)
+  }, [copiedKey])
+
+  useEffect(() => {
+    if (selectedProjectId && projects && !selectedProject && !isLoading) {
+      setSelectedProjectId(null)
+    }
+  }, [selectedProjectId, projects, selectedProject, isLoading])
+
+  async function copyText(value: string, key?: string) {
+    try {
+      await navigator.clipboard.writeText(value)
+      if (key) setCopiedKey(key)
+    } catch {
+      // Clipboard may be unavailable in some environments; ignore quietly.
+    }
+  }
 
   function closeFormDialog() {
     setFormOpen(false)
@@ -172,16 +212,20 @@ export function DevAccountsPage() {
   function openAddForm(preferredProjectId?: string, options?: { kind?: DevCredentialKind }) {
     setEditingAccount(null)
     const kind = options?.kind ?? 'api_key'
+    const environment = isEnvFileKind(kind) ? 'prod' : 'dev'
     setAccountForm({
       ...emptyAccount,
       kind,
-      name: isEnvFileKind(kind) ? defaultEnvFileName('dev') : '',
+      environment,
+      name: isEnvFileKind(kind) ? defaultEnvFileName(environment) : '',
       username: isEnvFileKind(kind) ? '.env' : '',
     })
     setProjectForm(emptyProject)
 
     if (preferredProjectId) {
       setProjectChoice(preferredProjectId)
+    } else if (selectedProjectId) {
+      setProjectChoice(selectedProjectId)
     } else if (projects && projects.length > 0) {
       setProjectChoice(projects[0].id)
     } else {
@@ -195,12 +239,13 @@ export function DevAccountsPage() {
     setEditingAccount(account)
     setProjectChoice(projectId)
     setProjectForm(emptyProject)
+    const kind = isEnvFileKind(account.kind) ? 'env_file' : (account.kind ?? 'login')
     setAccountForm({
-      kind: account.kind ?? 'login',
+      kind,
       provider: account.provider ?? '',
       environment: account.environment ?? 'dev',
       name: account.name,
-      username: account.username,
+      username: isEnvFileKind(kind) ? '.env' : account.username,
       password: account.password,
       url: account.url ?? '',
       description: account.description ?? '',
@@ -217,27 +262,49 @@ export function DevAccountsPage() {
     setEditProjectOpen(true)
   }
 
+  function openNewProjectOnly() {
+    setEditingProject(null)
+    setProjectForm(emptyProject)
+    setEditProjectOpen(true)
+  }
+
   function submitEditProject(e: React.FormEvent) {
     e.preventDefault()
-    if (!editingProject) return
-    updateProjectMutation.mutate({
-      id: editingProject.id,
-      data: {
-        name: projectForm.name.trim(),
+    if (editingProject) {
+      updateProjectMutation.mutate({
+        id: editingProject.id,
+        data: {
+          name: projectForm.name.trim(),
+          description: projectForm.description.trim() || null,
+        },
+      })
+      return
+    }
+
+    const name = projectForm.name.trim()
+    if (!name) return
+    void (async () => {
+      const project = await api.devAccounts.createProject({
+        name,
         description: projectForm.description.trim() || null,
-      },
-    })
+      })
+      await invalidate()
+      closeEditProjectDialog()
+      setSelectedProjectId(project.id)
+    })()
   }
 
   async function submitForm(e: React.FormEvent) {
     e.preventDefault()
     const envFile = isEnvFileKind(accountForm.kind)
     const accountPayload = {
-      kind: accountForm.kind,
+      kind: envFile ? 'env_file' : accountForm.kind,
       provider: envFile ? null : accountForm.provider.trim() || null,
       environment: accountForm.environment,
-      name: accountForm.name.trim(),
-      username: envFile ? (accountForm.username.trim() || '.env') : accountForm.username.trim(),
+      name: envFile
+        ? accountForm.name.trim() || defaultEnvFileName(accountForm.environment)
+        : accountForm.name.trim(),
+      username: envFile ? '.env' : accountForm.username.trim(),
       password: accountForm.password,
       url: envFile ? null : accountForm.url.trim() || null,
       description: accountForm.description.trim() || null,
@@ -266,9 +333,11 @@ export function DevAccountsPage() {
           description: projectForm.description.trim() || null,
         })
         projectId = project.id
+        setSelectedProjectId(project.id)
       }
 
       await api.devAccounts.createAccount(projectId, accountPayload)
+      setSelectedProjectId(projectId)
       await invalidate()
       closeFormDialog()
     } catch {
@@ -281,248 +350,330 @@ export function DevAccountsPage() {
   }
 
   const formBusy = submitting || updateAccountMutation.isPending
+  const viewingProject = Boolean(selectedProject)
 
   return (
     <div>
       <PageHeader
-        title="Dev Vault"
+        title={
+          viewingProject && selectedProject ? (
+            <span className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="-ml-2"
+                onClick={() => setSelectedProjectId(null)}
+                title="Back to projects"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <span className="truncate">{selectedProject.name}</span>
+            </span>
+          ) : (
+            'Dev Vault'
+          )
+        }
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => openAddForm(undefined, { kind: 'env_file' })}>
-              <FileText className="h-4 w-4" /> Paste .env
-            </Button>
-            <Button onClick={() => openAddForm()}>
-              <Plus className="h-4 w-4" /> New entry
-            </Button>
-          </div>
+          viewingProject && selectedProject ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => openAddForm(selectedProject.id, { kind: 'env_file' })}
+              >
+                <FileText className="h-4 w-4" /> Paste .env
+              </Button>
+              <Button onClick={() => openAddForm(selectedProject.id)}>
+                <Plus className="h-4 w-4" /> New entry
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => openAddForm(undefined, { kind: 'env_file' })}>
+                <FileText className="h-4 w-4" /> Paste .env
+              </Button>
+              <Button onClick={openNewProjectOnly}>
+                <Plus className="h-4 w-4" /> New project
+              </Button>
+            </div>
+          )
         }
       />
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        <Badge variant="secondary">{vaultStats.projectCount} projects</Badge>
-        <Badge variant="secondary">{vaultStats.secretCount} secrets</Badge>
-        <Badge variant="outline">Grouped by project</Badge>
-      </div>
+      {!viewingProject && (
+        <div className="mb-5 flex flex-wrap gap-2">
+          <Badge variant="secondary">{vaultStats.projectCount} projects</Badge>
+          <Badge variant="secondary">{vaultStats.entryCount} entries</Badge>
+        </div>
+      )}
 
       {isLoading ? (
         <Skeleton className="h-64" />
-      ) : projects?.length === 0 ? (
-        <EmptyState
-          title="No project secrets yet"
-          description="Create a project and store the first API key, database user, or connection string."
-          action={<Button onClick={() => openAddForm(undefined, { kind: 'env_file' })}>Paste .env</Button>}
-        />
-      ) : (
-        <div className="space-y-6">
-          {projects?.map((project) => (
-            <Card key={project.id}>
-              <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-                <div className="min-w-0">
-                  <CardTitle className="flex items-center gap-2">
-                    <FolderSimple className="h-5 w-5 shrink-0 text-muted-foreground" weight="duotone" />
-                    <span className="truncate">{project.name}</span>
-                  </CardTitle>
-                  {project.description && (
-                    <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
-                  )}
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {project.accounts?.length ?? 0} secret
-                    {(project.accounts?.length ?? 0) === 1 ? '' : 's'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button variant="outline" size="sm" onClick={() => openAddForm(project.id, { kind: 'env_file' })}>
-                    <FileText className="h-4 w-4" /> .env
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => openAddForm(project.id)}>
-                    <Plus className="h-4 w-4" /> Entry
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => openEditProject(project)}>
-                    <PencilSimple className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      if (confirm(`Delete project "${project.name}" and every secret inside it?`)) {
-                        deleteProjectMutation.mutate(project.id)
-                      }
-                    }}
-                  >
-                    <Trash className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {(project.accounts?.length ?? 0) === 0 ? (
-                  <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-                    No secrets yet. Add the first API key, DB user, or connection string for this project.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {project.accounts?.map((account) => {
-                      const showSecret = visibleSecrets[account.id]
-                      const envFile = isEnvFileKind(account.kind)
-                      return (
-                        <div key={account.id} className="rounded-md border px-4 py-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1 space-y-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                {envFile ? (
-                                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
-                                ) : (
-                                  <Key className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
-                                )}
-                                <p className="font-medium">{account.name}</p>
-                                <Badge variant="secondary">{credentialLabel(account.kind)}</Badge>
-                                <Badge variant="outline">{environmentLabel(account.environment)}</Badge>
-                                {account.provider && <Badge variant="outline">{account.provider}</Badge>}
-                              </div>
+      ) : viewingProject && selectedProject ? (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              {selectedProject.description && (
+                <p className="text-sm text-muted-foreground">{selectedProject.description}</p>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {entryCountLabel(selectedProject.accounts?.length ?? 0)}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={() => openEditProject(selectedProject)}>
+                <PencilSimple className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  if (
+                    confirm(`Delete project "${selectedProject.name}" and every entry inside it?`)
+                  ) {
+                    deleteProjectMutation.mutate(selectedProject.id)
+                  }
+                }}
+              >
+                <Trash className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
 
-                              {envFile ? (
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs uppercase tracking-wide text-muted-foreground opacity-70">
-                                      Contents
-                                    </span>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7"
-                                      onClick={() => copyText(account.password)}
-                                    >
-                                      <Copy className="h-3.5 w-3.5" /> Copy all
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7"
-                                      onClick={() => toggleSecret(account.id)}
-                                      title={showSecret ? 'Hide .env' : 'Show .env'}
-                                    >
-                                      {showSecret ? (
-                                        <EyeSlash className="h-3.5 w-3.5" />
-                                      ) : (
-                                        <Eye className="h-3.5 w-3.5" />
-                                      )}
-                                    </Button>
-                                  </div>
-                                  <pre className="max-h-48 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground">
-                                    {showSecret ? account.password : maskEnvContent(account.password)}
-                                  </pre>
-                                </div>
-                              ) : (
-                                <div className="grid gap-2 text-sm text-muted-foreground lg:grid-cols-2">
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                      Identifier
-                                    </span>
-                                    <span className="truncate font-mono text-foreground">
-                                      {account.username}
-                                    </span>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7"
-                                      onClick={() => copyText(account.username)}
-                                      title="Copy identifier"
-                                    >
-                                      <Copy className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </div>
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                      Secret
-                                    </span>
-                                    <span className="truncate font-mono text-foreground">
-                                      {showSecret ? account.password : '••••••••••••'}
-                                    </span>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7"
-                                      onClick={() => toggleSecret(account.id)}
-                                      title={showSecret ? 'Hide secret' : 'Show secret'}
-                                    >
-                                      {showSecret ? (
-                                        <EyeSlash className="h-3.5 w-3.5" />
-                                      ) : (
-                                        <Eye className="h-3.5 w-3.5" />
-                                      )}
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7"
-                                      onClick={() => copyText(account.password)}
-                                      title="Copy secret"
-                                    >
-                                      <Copy className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
+          {(selectedProject.accounts?.length ?? 0) === 0 ? (
+            <EmptyState
+              title="No entries yet"
+              description="Paste a full .env block for this project, or add a single API key / login if you need one."
+              action={
+                <Button onClick={() => openAddForm(selectedProject.id, { kind: 'env_file' })}>
+                  Paste .env
+                </Button>
+              }
+            />
+          ) : (
+            <div className="space-y-2">
+              {selectedProject.accounts?.map((account) => {
+                const showSecret = visibleSecrets[account.id]
+                const envFile = isEnvFileKind(account.kind)
+                const copyAllKey = `copy-all:${account.id}`
+                const copiedAll = copiedKey === copyAllKey
+                return (
+                  <div key={account.id} className="rounded-md border px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {envFile ? (
+                            <FileText
+                              className="h-4 w-4 shrink-0 text-muted-foreground"
+                              weight="duotone"
+                            />
+                          ) : (
+                            <Key className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
+                          )}
+                          <p className="font-medium">{account.name}</p>
+                          <Badge variant="secondary">{credentialLabel(account.kind)}</Badge>
+                          <Badge variant="outline">{environmentLabel(account.environment)}</Badge>
+                          {account.provider && <Badge variant="outline">{account.provider}</Badge>}
+                        </div>
 
-                              {account.url && (
-                                <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-                                  <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                    URL
-                                  </span>
-                                  <span className="truncate font-mono text-foreground">{account.url}</span>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => copyText(account.url ?? '')}
-                                    title="Copy URL"
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              )}
-
-                              {account.description && (
-                                <p className="text-sm text-muted-foreground">{account.description}</p>
-                              )}
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
+                        {envFile ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs uppercase tracking-wide text-muted-foreground opacity-70">
+                                Contents
+                              </span>
                               <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => openEditAccount(project.id, account)}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7"
+                                onClick={() => copyText(account.password, copyAllKey)}
                               >
-                                <PencilSimple className="h-4 w-4" />
+                                {copiedAll ? (
+                                  <>
+                                    <Check className="h-3.5 w-3.5" /> Copied
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="h-3.5 w-3.5" /> Copy all
+                                  </>
+                                )}
                               </Button>
                               <Button
+                                type="button"
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => {
-                                  if (confirm(`Delete secret "${account.name}"?`)) {
-                                    deleteAccountMutation.mutate({
-                                      projectId: project.id,
-                                      accountId: account.id,
-                                    })
-                                  }
-                                }}
+                                className="h-7 w-7"
+                                onClick={() => toggleSecret(account.id)}
+                                title={showSecret ? 'Hide .env' : 'Show .env'}
                               >
-                                <Trash className="h-4 w-4" />
+                                {showSecret ? (
+                                  <EyeSlash className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Eye className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </div>
+                            <pre className="max-h-48 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground">
+                              {showSecret ? account.password : maskEnvContent(account.password)}
+                            </pre>
+                          </div>
+                        ) : (
+                          <div className="grid gap-2 text-sm text-muted-foreground lg:grid-cols-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
+                                Identifier
+                              </span>
+                              <span className="truncate font-mono text-foreground">
+                                {account.username}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => copyText(account.username, `user:${account.id}`)}
+                                title="Copy identifier"
+                              >
+                                {copiedKey === `user:${account.id}` ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Copy className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </div>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
+                                Value
+                              </span>
+                              <span className="truncate font-mono text-foreground">
+                                {showSecret ? account.password : '••••••••••••'}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => toggleSecret(account.id)}
+                                title={showSecret ? 'Hide value' : 'Show value'}
+                              >
+                                {showSecret ? (
+                                  <EyeSlash className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Eye className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => copyText(account.password, `pass:${account.id}`)}
+                                title="Copy value"
+                              >
+                                {copiedKey === `pass:${account.id}` ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Copy className="h-3.5 w-3.5" />
+                                )}
                               </Button>
                             </div>
                           </div>
-                        </div>
-                      )
-                    })}
+                        )}
+
+                        {account.url && (
+                          <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                            <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
+                              URL
+                            </span>
+                            <span className="truncate font-mono text-foreground">{account.url}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => copyText(account.url ?? '', `url:${account.id}`)}
+                              title="Copy URL"
+                            >
+                              {copiedKey === `url:${account.id}` ? (
+                                <Check className="h-3.5 w-3.5" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        )}
+
+                        {account.description && (
+                          <p className="text-sm text-muted-foreground">{account.description}</p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditAccount(selectedProject.id, account)}
+                        >
+                          <PencilSimple className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            if (confirm(`Delete entry "${account.name}"?`)) {
+                              deleteAccountMutation.mutate({
+                                projectId: selectedProject.id,
+                                accountId: account.id,
+                              })
+                            }
+                          }}
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ) : projects?.length === 0 ? (
+        <EmptyState
+          title="No projects yet"
+          description="Create a project and paste its .env block, or add individual credentials later."
+          action={
+            <Button onClick={() => openAddForm(undefined, { kind: 'env_file' })}>Paste .env</Button>
+          }
+        />
+      ) : (
+        <div className="space-y-2">
+          {projects?.map((project) => {
+            const count = project.accounts?.length ?? 0
+            return (
+              <button
+                key={project.id}
+                type="button"
+                onClick={() => setSelectedProjectId(project.id)}
+                className="flex w-full items-center gap-3 rounded-md border px-4 py-3 text-left transition-colors hover:bg-muted/50"
+              >
+                <FolderSimple
+                  className="h-5 w-5 shrink-0 text-muted-foreground"
+                  weight="duotone"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{project.name}</p>
+                  {project.description ? (
+                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                      {project.description}
+                    </p>
+                  ) : null}
+                  <p className="mt-0.5 text-xs text-muted-foreground">{entryCountLabel(count)}</p>
+                </div>
+                <CaretRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -537,10 +688,10 @@ export function DevAccountsPage() {
           <DialogHeader>
             <DialogTitle>
               {editingAccount
-                ? isEnvFileKind(editingAccount.kind)
+                ? envFileForm
                   ? 'Edit .env file'
                   : 'Edit entry'
-                : isEnvFileKind(accountForm.kind)
+                : envFileForm
                   ? 'Paste .env file'
                   : 'New entry'}
             </DialogTitle>
@@ -573,49 +724,12 @@ export function DevAccountsPage() {
                       onChange={(e) => setProjectForm((f) => ({ ...f, name: e.target.value }))}
                       required
                     />
-                    <Textarea
-                      placeholder="Project notes, stack, links, or purpose"
-                      value={projectForm.description}
-                      onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
-                    />
                   </div>
                 )}
               </div>
             )}
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Type</label>
-                <Select
-                  value={accountForm.kind}
-                  onValueChange={(value) => {
-                    const kind = value as DevCredentialKind
-                    setAccountForm((form) => ({
-                      ...form,
-                      kind,
-                      username: isEnvFileKind(kind) ? '.env' : form.username,
-                      provider: isEnvFileKind(kind) ? '' : form.provider,
-                      url: isEnvFileKind(kind) ? '' : form.url,
-                      name:
-                        isEnvFileKind(kind) && !form.name.trim()
-                          ? defaultEnvFileName(form.environment)
-                          : form.name,
-                    }))
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {credentialTypes.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
+            {envFileForm ? (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Environment</label>
                 <Select
@@ -624,10 +738,7 @@ export function DevAccountsPage() {
                     setAccountForm((form) => ({
                       ...form,
                       environment: value,
-                      name:
-                        isEnvFileKind(form.kind) && !editingAccount
-                          ? defaultEnvFileName(value)
-                          : form.name,
+                      name: defaultEnvFileName(value),
                     }))
                   }
                 >
@@ -643,51 +754,111 @@ export function DevAccountsPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Type</label>
+                    <Select
+                      value={accountForm.kind}
+                      onValueChange={(value) => {
+                        const kind = value as DevCredentialKind
+                        setAccountForm((form) => ({
+                          ...form,
+                          kind,
+                        }))
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {credentialTypes.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-            {!isEnvFileKind(accountForm.kind) && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Input
-                  placeholder="Provider (MongoDB Atlas, Neon, Stripe)"
-                  value={accountForm.provider}
-                  onChange={(e) => setAccountForm((f) => ({ ...f, provider: e.target.value }))}
-                />
-                <Input
-                  placeholder="Console URL or docs URL"
-                  value={accountForm.url}
-                  onChange={(e) => setAccountForm((f) => ({ ...f, url: e.target.value }))}
-                />
-              </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Environment</label>
+                    <Select
+                      value={accountForm.environment}
+                      onValueChange={(value) =>
+                        setAccountForm((form) => ({ ...form, environment: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {environments.map((env) => (
+                          <SelectItem key={env} value={env}>
+                            {environmentLabel(env)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    placeholder="Provider (MongoDB Atlas, Neon, Stripe)"
+                    value={accountForm.provider}
+                    onChange={(e) => setAccountForm((f) => ({ ...f, provider: e.target.value }))}
+                  />
+                  <Input
+                    placeholder="Console URL or docs URL"
+                    value={accountForm.url}
+                    onChange={(e) => setAccountForm((f) => ({ ...f, url: e.target.value }))}
+                  />
+                </div>
+              </>
             )}
 
             <div className="space-y-3">
-              <Input
-                placeholder={
-                  isEnvFileKind(accountForm.kind)
-                    ? 'Label (Production .env, Vercel env)'
-                    : 'Name (Atlas database user, Stripe secret key)'
-                }
-                value={accountForm.name}
-                onChange={(e) => setAccountForm((f) => ({ ...f, name: e.target.value }))}
-                required
-              />
-              {!isEnvFileKind(accountForm.kind) && (
+              {!envFileForm && (
                 <>
                   <Input
-                    placeholder="Identifier (username, key id, env var name)"
+                    placeholder="Name (Atlas database user, Stripe secret key)"
+                    value={accountForm.name}
+                    onChange={(e) => setAccountForm((f) => ({ ...f, name: e.target.value }))}
+                    required
+                  />
+                  <Input
+                    placeholder="Identifier (username, key id)"
                     value={accountForm.username}
                     onChange={(e) => setAccountForm((f) => ({ ...f, username: e.target.value }))}
                     required
                   />
-                  <Input
-                    placeholder="Secret value / password / connection string"
-                    value={accountForm.password}
-                    onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
-                    required
-                  />
+                  {usesMultilineSecret(accountForm.kind) ? (
+                    <Textarea
+                      placeholder={
+                        accountForm.kind === 'ssh_key'
+                          ? 'Paste SSH private key'
+                          : 'Paste connection string'
+                      }
+                      value={accountForm.password}
+                      onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
+                      className="min-h-32 font-mono text-xs leading-relaxed"
+                      required
+                      spellCheck={false}
+                    />
+                  ) : (
+                    <Input
+                      placeholder="Secret value / password"
+                      value={accountForm.password}
+                      onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
+                      required
+                    />
+                  )}
                 </>
               )}
-              {isEnvFileKind(accountForm.kind) && (
+
+              {envFileForm && (
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Paste full .env block</label>
                   <Textarea
@@ -699,15 +870,17 @@ export function DevAccountsPage() {
                     spellCheck={false}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Copy from IDE or Vercel, paste nguyên khối. Bấm Copy all để paste lại chỗ khác.
+                    Paste the whole block from your IDE or Vercel. Use Copy all later to paste it
+                    elsewhere.
                   </p>
                 </div>
               )}
+
               <Textarea
                 placeholder={
-                  isEnvFileKind(accountForm.kind)
+                  envFileForm
                     ? 'Notes (optional): which deploy, last rotated, etc.'
-                    : 'Notes: IP allowlist, role, created by, rotation date, usage'
+                    : 'Notes (optional): IP allowlist, role, rotation date'
                 }
                 value={accountForm.description}
                 onChange={(e) => setAccountForm((f) => ({ ...f, description: e.target.value }))}
@@ -718,10 +891,10 @@ export function DevAccountsPage() {
               {editingAccount
                 ? 'Save'
                 : creatingNewProject
-                  ? isEnvFileKind(accountForm.kind)
+                  ? envFileForm
                     ? 'Create project & save .env'
                     : 'Create project & entry'
-                  : isEnvFileKind(accountForm.kind)
+                  : envFileForm
                     ? 'Save .env'
                     : 'Create entry'}
             </Button>
@@ -738,7 +911,7 @@ export function DevAccountsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Project</DialogTitle>
+            <DialogTitle>{editingProject ? 'Edit Project' : 'New Project'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={submitEditProject} className="space-y-4">
             <Input
@@ -748,12 +921,12 @@ export function DevAccountsPage() {
               required
             />
             <Textarea
-              placeholder="Project notes, stack, links, or purpose"
+              placeholder="Project notes, stack, links, or purpose (optional)"
               value={projectForm.description}
               onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
             />
             <Button type="submit" className="w-full" disabled={updateProjectMutation.isPending}>
-              Save
+              {editingProject ? 'Save' : 'Create project'}
             </Button>
           </form>
         </DialogContent>

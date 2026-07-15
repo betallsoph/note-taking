@@ -18,6 +18,21 @@ router.get('/projects', async (req, res) => {
     return res.json(await listDevProjects(req.user.id))
   }
 
+  // Migrate legacy env_var rows in the in-memory store.
+  for (const account of mockStore.devAccounts) {
+    if (account.kind !== 'env_var') continue
+    const key = account.username.trim()
+    const value = account.password
+    const looksLikeBlock = value.includes('\n') || (value.includes('=') && !key)
+    account.kind = 'env_file'
+    account.username = '.env'
+    account.password = looksLikeBlock ? value : key ? `${key}=${value}` : value
+    account.provider = null
+    account.url = null
+    if (!account.name.trim()) account.name = key || 'Env file'
+    account.updatedAt = now()
+  }
+
   const projects = mockStore.devProjects
     .filter((p) => p.userId === req.user.id)
     .map((p) => ({
@@ -104,7 +119,7 @@ router.post('/projects/:id/accounts', async (req, res) => {
   )
 
   const { kind, provider, environment, name, username, password, url, description } = req.body
-  const isEnvFile = kind === 'env_file'
+  const isEnvFile = kind === 'env_file' || kind === 'env_var'
   if (!name?.trim() || !password?.trim()) {
     return res.status(400).json({ error: isEnvFile ? 'Name and .env contents are required' : 'Name, identifier, and secret are required' })
   }
@@ -120,16 +135,39 @@ router.post('/projects/:id/accounts', async (req, res) => {
 
   if (!project) return res.status(404).json({ error: 'Not found' })
 
+  let nextKind = kind ?? 'login'
+  let nextUsername = username?.trim() ? username.trim() : ''
+  let nextPassword = String(password)
+  let nextProvider = provider?.trim() ? provider.trim() : null
+  let nextUrl = url?.trim() ? url.trim() : null
+  let nextName = name.trim()
+
+  if (kind === 'env_var') {
+    const key = nextUsername
+    const looksLikeBlock = nextPassword.includes('\n') || (nextPassword.includes('=') && !key)
+    nextPassword = looksLikeBlock ? nextPassword : key ? `${key}=${nextPassword}` : nextPassword
+    nextKind = 'env_file'
+    nextUsername = '.env'
+    nextProvider = null
+    nextUrl = null
+  }
+
+  if (nextKind === 'env_file') {
+    nextUsername = nextUsername || '.env'
+    nextProvider = null
+    nextUrl = null
+  }
+
   const account = {
     id: id(),
     projectId: project.id,
-    kind: kind ?? 'login',
-    provider: provider?.trim() ? provider.trim() : null,
+    kind: nextKind,
+    provider: nextProvider,
     environment: environment?.trim() ? environment.trim() : 'dev',
-    name: name.trim(),
-    username: isEnvFile ? (username?.trim() || '.env') : username.trim(),
-    password: String(password),
-    url: url?.trim() ? url.trim() : null,
+    name: nextName,
+    username: nextUsername,
+    password: nextPassword,
+    url: nextUrl,
     description: description?.trim() ? description.trim() : null,
     createdAt: now(),
     updatedAt: now(),

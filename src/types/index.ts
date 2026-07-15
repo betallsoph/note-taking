@@ -11,8 +11,9 @@ export type DevCredentialKind =
   | 'oauth_client'
   | 'webhook_secret'
   | 'ssh_key'
-  | 'env_var'
   | 'env_file'
+  /** @deprecated Migrated to env_file on read; kept for older rows. */
+  | 'env_var'
 
 export interface User {
   id: string
