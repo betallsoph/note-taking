@@ -204,7 +204,9 @@ export interface Note {
   userId: string
   title: string
   content: Record<string, unknown>
+  tags: string[]
   isPinned: boolean
+  isArchived: boolean
   createdAt: string
   updatedAt: string
 }

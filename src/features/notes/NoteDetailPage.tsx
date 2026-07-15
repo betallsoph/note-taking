@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, PushPin, Trash } from '@phosphor-icons/react'
+import { Archive, ArrowLeft, PushPin, Trash } from '@phosphor-icons/react'
 import { api } from '@/services/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/misc'
 import { NoteEditor } from './NoteEditor'
+import { NoteTagsInput } from './NoteTagsInput'
 
 export function NoteDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [title, setTitle] = useState('')
+  const [tags, setTags] = useState<string[]>([])
 
   const { data: note, isLoading } = useQuery({
     queryKey: ['note', id],
@@ -21,7 +23,9 @@ export function NoteDetailPage() {
   })
 
   useEffect(() => {
-    if (note) setTitle(note.title)
+    if (!note) return
+    setTitle(note.title)
+    setTags(note.tags ?? [])
   }, [note])
 
   const titleMutation = useMutation({
@@ -32,11 +36,28 @@ export function NoteDetailPage() {
     },
   })
 
+  const tagsMutation = useMutation({
+    mutationFn: (nextTags: string[]) => api.notes.update(id!, { tags: nextTags }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['note', id], updated)
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+    },
+  })
+
   const pinMutation = useMutation({
     mutationFn: () => api.notes.update(id!, { isPinned: !note?.isPinned }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['note', id] })
       queryClient.invalidateQueries({ queryKey: ['notes'] })
+    },
+  })
+
+  const archiveMutation = useMutation({
+    mutationFn: () => api.notes.update(id!, { isArchived: !note?.isArchived }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['note', id] })
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 
@@ -54,7 +75,7 @@ export function NoteDetailPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3">
         <Link to="/notes">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="h-4 w-4" />
@@ -74,22 +95,29 @@ export function NoteDetailPage() {
           className="border-none bg-transparent px-0 text-2xl font-semibold tracking-tight shadow-none focus-visible:ring-0"
           placeholder="Untitled"
         />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => pinMutation.mutate()}
-        >
+        <Button variant="outline" size="sm" onClick={() => pinMutation.mutate()}>
           <PushPin className="h-4 w-4" weight={note.isPinned ? 'fill' : 'regular'} />
           {note.isPinned ? 'Pinned' : 'Pin'}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => deleteMutation.mutate()}
-        >
+        <Button variant="outline" size="sm" onClick={() => archiveMutation.mutate()}>
+          <Archive className="h-4 w-4" />
+          {note.isArchived ? 'Restore' : 'Archive'}
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => deleteMutation.mutate()}>
           <Trash className="h-4 w-4" />
           Delete
         </Button>
+      </div>
+
+      <div className="mb-6 max-w-xl">
+        <NoteTagsInput
+          tags={tags}
+          onChange={(next) => {
+            setTags(next)
+            tagsMutation.mutate(next)
+          }}
+          placeholder="Add tag — Enter to save"
+        />
       </div>
 
       <NoteEditor noteId={note.id} content={note.content} />

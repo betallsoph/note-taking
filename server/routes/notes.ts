@@ -17,6 +17,8 @@ router.get('/', async (req, res, next) => {
     const items = await listNotesAnywhere(req.user.id, {
       search: queryParam(req.query.search),
       pinned: queryParam(req.query.pinned),
+      tag: queryParam(req.query.tag),
+      archived: queryParam(req.query.archived),
     })
     res.json(items)
   } catch (error) {

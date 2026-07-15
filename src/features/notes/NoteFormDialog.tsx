@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api, ApiError } from '@/services/api'
+import { NoteTagsInput } from './NoteTagsInput'
 
 interface Props {
   open: boolean
@@ -13,6 +14,7 @@ interface Props {
 
 export function NoteFormDialog({ open, onOpenChange }: Props) {
   const [title, setTitle] = useState('')
+  const [tags, setTags] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -23,6 +25,7 @@ export function NoteFormDialog({ open, onOpenChange }: Props) {
       queryClient.invalidateQueries({ queryKey: ['notes'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setTitle('')
+      setTags([])
       setError(null)
       onOpenChange(false)
       navigate(`/notes/${note.id}`)
@@ -38,6 +41,7 @@ export function NoteFormDialog({ open, onOpenChange }: Props) {
     createMutation.mutate({
       title: title.trim() || 'Untitled',
       content: { markdown: '' },
+      tags,
     })
   }
 
@@ -48,6 +52,7 @@ export function NoteFormDialog({ open, onOpenChange }: Props) {
         onOpenChange(next)
         if (!next) {
           setTitle('')
+          setTags([])
           setError(null)
         }
       }}
@@ -62,6 +67,11 @@ export function NoteFormDialog({ open, onOpenChange }: Props) {
             placeholder="Title (optional)"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+          />
+          <NoteTagsInput
+            tags={tags}
+            onChange={setTags}
+            placeholder="Tags optional — Enter to add"
           />
           {error && <p className="text-sm text-rose-500">{error}</p>}
           <Button type="submit" className="w-full" disabled={createMutation.isPending}>

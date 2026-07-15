@@ -32,7 +32,9 @@ async function seed() {
       },
       markdownText:
         'Capture anything here — meeting notes, ideas, grocery lists.\n\n- Keep it messy\n- Pin the useful ones',
+      tags: ['inbox', 'idea'],
       isPinned: true,
+      isArchived: false,
       createdAt: now,
       updatedAt: now,
     },
@@ -46,7 +48,9 @@ async function seed() {
       },
       markdownText:
         '1. Designing Data-Intensive Applications ch.3\n2. PostgreSQL MVCC deep dive\n3. MongoDB Atlas Search fuzzy notes',
+      tags: ['study'],
       isPinned: false,
+      isArchived: false,
       createdAt: now,
       updatedAt: now,
     },

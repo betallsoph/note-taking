@@ -23,6 +23,11 @@ import {
 } from './notes-config.js'
 import { mockStore, id, now, type Note } from '../mock-store.js'
 import { isMissingRelation } from './pg-error.js'
+import {
+  normalizeNoteTags,
+  noteMatchesArchivedFilter,
+  type NoteListFilters,
+} from './note-tags.js'
 
 export type NotesStore = NotesStoreLabel
 
@@ -51,27 +56,30 @@ function sortMockNotes(items: Note[]) {
   })
 }
 
-function filterMockNotes(
-  userId: string,
-  filters: { search?: string; pinned?: string },
-) {
+function filterMockNotes(userId: string, filters: NoteListFilters) {
   let items = mockStore.notes.filter((n) => n.userId === userId)
+  items = items.filter((n) => noteMatchesArchivedFilter(n.isArchived, filters.archived))
   if (filters.pinned === 'true') items = items.filter((n) => n.isPinned)
+  if (filters.tag) {
+    const tag = filters.tag.toLowerCase()
+    items = items.filter((n) => n.tags.includes(tag))
+  }
   if (filters.search) {
     const q = filters.search.toLowerCase()
     items = items.filter((n) => {
       const markdown =
         typeof n.content.markdown === 'string' ? n.content.markdown.toLowerCase() : ''
-      return n.title.toLowerCase().includes(q) || markdown.includes(q)
+      return (
+        n.title.toLowerCase().includes(q) ||
+        markdown.includes(q) ||
+        n.tags.some((t) => t.includes(q))
+      )
     })
   }
   return sortMockNotes(items)
 }
 
-async function listFromNeon(
-  userId: string,
-  filters: { search?: string; pinned?: string },
-) {
+async function listFromNeon(userId: string, filters: NoteListFilters) {
   if (!isDatabaseEnabled()) return null
   try {
     return await listNotes(userId, filters)
@@ -81,10 +89,7 @@ async function listFromNeon(
   }
 }
 
-async function listFromAtlas(
-  userId: string,
-  filters: { search?: string; pinned?: string },
-) {
+async function listFromAtlas(userId: string, filters: NoteListFilters) {
   try {
     return await listMongoNotes(userId, filters)
   } catch (error) {
@@ -94,10 +99,7 @@ async function listFromAtlas(
   }
 }
 
-export async function listNotesAnywhere(
-  userId: string,
-  filters: { search?: string; pinned?: string } = {},
-) {
+export async function listNotesAnywhere(userId: string, filters: NoteListFilters = {}) {
   const mode = resolveNotesStoreMode()
 
   if (mode === 'atlas') {
@@ -177,7 +179,9 @@ export async function createNoteAnywhere(userId: string, body: Record<string, un
     userId,
     title,
     content: content as Record<string, unknown>,
+    tags: normalizeNoteTags(body.tags),
     isPinned,
+    isArchived: Boolean(body.isArchived),
     createdAt: now(),
     updatedAt: now(),
   }
@@ -225,8 +229,11 @@ export async function updateNoteAnywhere(
         ? body.title.trim()
         : current.title,
     content: body.content !== undefined ? (body.content as Record<string, unknown>) : current.content,
+    tags: body.tags !== undefined ? normalizeNoteTags(body.tags) : current.tags,
     isPinned:
       typeof body.isPinned === 'boolean' ? body.isPinned : current.isPinned,
+    isArchived:
+      typeof body.isArchived === 'boolean' ? body.isArchived : current.isArchived,
     updatedAt: now(),
   }
   return mockStore.notes[idx]

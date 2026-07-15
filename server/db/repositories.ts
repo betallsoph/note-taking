@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, lte } from 'drizzle-orm'
 import { db, type Database } from './index.js'
 import { getPgError, isMissingRelation } from './pg-error.js'
 import { resolveNotesStoreMode } from './notes-config.js'
+import { normalizeNoteTags, noteMatchesArchivedFilter, type NoteListFilters } from './note-tags.js'
 import * as schema from './schema.js'
 import { MOCK_USER, type AuthUser } from '../middleware/auth.js'
 import {
@@ -206,8 +207,13 @@ function serializeFlashcard(row: FlashcardRow): Flashcard {
 
 function serializeNote(row: NoteRow): Note {
   return {
-    ...row,
+    id: row.id,
+    userId: row.userId,
+    title: row.title,
     content: asRecord(row.content),
+    tags: normalizeNoteTags(row.tags ?? []),
+    isPinned: row.isPinned,
+    isArchived: Boolean(row.isArchived),
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
   }
@@ -1188,10 +1194,7 @@ async function getDevProject(userId: string, projectId: string) {
   return row ? serializeDevProject(row) : null
 }
 
-export async function listNotes(
-  userId: string,
-  filters: { search?: string; pinned?: string } = {},
-) {
+export async function listNotes(userId: string, filters: NoteListFilters = {}) {
   const rows = await requireDb()
     .select()
     .from(schema.notes)
@@ -1199,14 +1202,21 @@ export async function listNotes(
     .orderBy(desc(schema.notes.updatedAt))
 
   const query = filters.search?.toLowerCase()
+  const tag = filters.tag?.toLowerCase()
   return rows
     .map(serializeNote)
+    .filter((note) => noteMatchesArchivedFilter(note.isArchived, filters.archived))
     .filter((note) => (filters.pinned === 'true' ? note.isPinned : true))
+    .filter((note) => (tag ? note.tags.includes(tag) : true))
     .filter((note) => {
       if (!query) return true
       const markdown =
         typeof note.content.markdown === 'string' ? note.content.markdown.toLowerCase() : ''
-      return note.title.toLowerCase().includes(query) || markdown.includes(query)
+      return (
+        note.title.toLowerCase().includes(query) ||
+        markdown.includes(query) ||
+        note.tags.some((t) => t.includes(query))
+      )
     })
     .sort((a, b) => {
       if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
@@ -1236,7 +1246,9 @@ export async function createNote(userId: string, body: Record<string, unknown>) 
       userId,
       title,
       content: body.content ?? { markdown: '' },
+      tags: normalizeNoteTags(body.tags),
       isPinned: Boolean(body.isPinned),
+      isArchived: Boolean(body.isArchived),
     })
     .returning()
   return serializeNote(row)
@@ -1246,7 +1258,9 @@ export async function updateNote(userId: string, noteId: string, body: Record<st
   const updates: Partial<typeof schema.notes.$inferInsert> = { updatedAt: new Date() }
   if (typeof body.title === 'string' && body.title.trim()) updates.title = body.title.trim()
   if (body.content !== undefined) updates.content = body.content
+  if (body.tags !== undefined) updates.tags = normalizeNoteTags(body.tags)
   if (typeof body.isPinned === 'boolean') updates.isPinned = body.isPinned
+  if (typeof body.isArchived === 'boolean') updates.isArchived = body.isArchived
 
   const [row] = await requireDb()
     .update(schema.notes)
