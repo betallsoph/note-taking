@@ -38,7 +38,6 @@ export function NotesPage() {
     <div>
       <PageHeader
         title="Notes"
-        description="Free-form notes for anything — ideas, lists, dumps, reminders to self"
         actions={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" />

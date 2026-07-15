@@ -42,7 +42,6 @@ export function KnowledgePage() {
     <div>
       <PageHeader
         title="Knowledge Base"
-        description="Store and organize your computer science notes"
         actions={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" />

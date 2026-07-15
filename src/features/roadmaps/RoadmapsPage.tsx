@@ -40,7 +40,6 @@ export function RoadmapsPage() {
     <div>
       <PageHeader
         title="Learning Roadmaps"
-        description="Track your progress across learning paths"
         actions={<Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New Roadmap</Button>}
       />
 

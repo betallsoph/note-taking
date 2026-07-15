@@ -36,7 +36,6 @@ export function ReviewsPage() {
     <div>
       <PageHeader
         title="Review Queue"
-        description="Spaced repetition review — intervals: 1, 3, 7, 14, 30 days"
       />
 
       {!dueCards?.length ? (

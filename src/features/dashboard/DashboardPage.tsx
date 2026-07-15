@@ -40,7 +40,6 @@ export function DashboardPage() {
     <div>
       <PageHeader
         title="Dashboard"
-        description="Your personal computer science learning hub"
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

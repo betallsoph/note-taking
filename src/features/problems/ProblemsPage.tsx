@@ -40,7 +40,6 @@ export function ProblemsPage() {
     <div>
       <PageHeader
         title="Problem Solving"
-        description="Your personal LeetCode notebook"
         actions={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" /> New Problem

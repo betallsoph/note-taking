@@ -27,7 +27,6 @@ export function DsaVisualizerPage() {
     <div className="flex min-h-[calc(100dvh-6.5rem)] flex-col">
       <PageHeader
         title="DSA Visualizer"
-        description="Client-side state-based algorithm and data structure visualizations"
         className="mb-4 shrink-0"
       />
 

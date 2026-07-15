@@ -109,7 +109,6 @@ export function RemindersPage() {
     <div>
       <PageHeader
         title="Reminders"
-        description="Lightweight time-based nudges — overdue, upcoming, done"
         actions={
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />

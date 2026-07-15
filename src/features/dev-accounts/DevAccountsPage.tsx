@@ -262,7 +262,6 @@ export function DevAccountsPage() {
     <div>
       <PageHeader
         title="Dev Vault"
-        description="Project-scoped API keys, database users, connection strings, env vars, and service credentials."
         actions={
           <Button onClick={() => openAddForm()}>
             <Plus className="h-4 w-4" /> New Secret
