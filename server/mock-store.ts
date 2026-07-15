@@ -181,7 +181,9 @@ export interface Note {
   userId: string
   title: string
   content: Record<string, unknown>
+  tags: string[]
   isPinned: boolean
+  isArchived: boolean
   createdAt: string
   updatedAt: string
 }
@@ -446,9 +448,11 @@ class MockStore {
         title: 'Random thoughts',
         content: {
           markdown:
-            'Capture anything here — meeting notes, ideas, grocery lists, whatever.\n\n- Keep it messy\n- Pin the useful ones\n- No categories required',
+            'Capture anything here — meeting notes, ideas, grocery lists, whatever.\n\n- Keep it messy\n- Pin the useful ones\n- Tag lightly when it helps',
         },
+        tags: ['inbox', 'idea'],
         isPinned: true,
+        isArchived: false,
         createdAt: now(),
         updatedAt: now(),
       },
@@ -459,7 +463,9 @@ class MockStore {
         content: {
           markdown: '1. Designing Data-Intensive Applications ch.3\n2. PostgreSQL MVCC deep dive\n3. Sketch a notification system',
         },
+        tags: ['study'],
         isPinned: false,
+        isArchived: false,
         createdAt: now(),
         updatedAt: now(),
       },

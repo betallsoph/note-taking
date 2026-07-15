@@ -8,6 +8,12 @@
         "userId": {
           "type": "token"
         },
+        "isArchived": {
+          "type": "boolean"
+        },
+        "tags": {
+          "type": "token"
+        },
         "title": [
           {
             "type": "string",

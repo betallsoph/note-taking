@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto'
 import type { Collection, Document } from 'mongodb'
 import type { Note } from '../mock-store.js'
 import { getMongoDb, isMongoEnabled } from './mongo.js'
+import {
+  normalizeNoteTags,
+  noteMatchesArchivedFilter,
+  type NoteListFilters,
+} from './note-tags.js'
 
 export const NOTES_COLLECTION = 'notes'
 /** Atlas Search index name — create this in Atlas UI from atlas/notes-search-index.json */
@@ -14,7 +19,9 @@ export interface NoteDocument {
   content: Record<string, unknown>
   /** Denormalized plain markdown for Atlas Search / regex fallback. */
   markdownText: string
+  tags: string[]
   isPinned: boolean
+  isArchived: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -42,7 +49,9 @@ export function serializeMongoNote(doc: NoteDocument): Note {
     userId: doc.userId,
     title: doc.title,
     content: asRecord(doc.content),
-    isPinned: doc.isPinned,
+    tags: normalizeNoteTags(doc.tags ?? []),
+    isPinned: Boolean(doc.isPinned),
+    isArchived: Boolean(doc.isArchived),
     createdAt: toIso(doc.createdAt),
     updatedAt: toIso(doc.updatedAt),
   }
@@ -58,8 +67,9 @@ export async function ensureMongoNotesIndexes() {
   if (!isMongoEnabled()) return
   const col = await notesCollection()
   await Promise.all([
-    col.createIndex({ userId: 1, updatedAt: -1 }),
+    col.createIndex({ userId: 1, isArchived: 1, updatedAt: -1 }),
     col.createIndex({ userId: 1, isPinned: -1, updatedAt: -1 }),
+    col.createIndex({ userId: 1, tags: 1 }),
   ])
 }
 
@@ -70,20 +80,35 @@ function sortNotes(notes: Note[]) {
   })
 }
 
+function applyListFilters(notes: Note[], filters: NoteListFilters) {
+  return notes.filter((note) => {
+    if (!noteMatchesArchivedFilter(note.isArchived, filters.archived)) return false
+    if (filters.pinned === 'true' && !note.isPinned) return false
+    if (filters.tag && !note.tags.includes(filters.tag.toLowerCase())) return false
+    return true
+  })
+}
+
 async function regexSearch(
   col: Collection<NoteDocument>,
   userId: string,
-  query: string,
-  pinned?: string,
+  filters: NoteListFilters,
 ) {
   const filter: Document = { userId }
-  if (pinned === 'true') filter.isPinned = true
+  if (filters.archived === 'true') filter.isArchived = true
+  else filter.isArchived = { $ne: true }
+  if (filters.pinned === 'true') filter.isPinned = true
+  if (filters.tag) filter.tags = filters.tag.toLowerCase()
+
+  const query = filters.search?.trim()
   if (query) {
     filter.$or = [
       { title: { $regex: query, $options: 'i' } },
       { markdownText: { $regex: query, $options: 'i' } },
+      { tags: { $regex: query, $options: 'i' } },
     ]
   }
+
   const rows = await col.find(filter).sort({ updatedAt: -1 }).toArray()
   return sortNotes(rows.map(serializeMongoNote))
 }
@@ -92,31 +117,34 @@ async function regexSearch(
  * Prefer Atlas Search ($search) when an index exists; fall back to regex
  * so local/dev still works before the Search index is created.
  */
-export async function listMongoNotes(
-  userId: string,
-  filters: { search?: string; pinned?: string } = {},
-) {
+export async function listMongoNotes(userId: string, filters: NoteListFilters = {}) {
   const col = await notesCollection()
   const query = filters.search?.trim()
 
   if (!query) {
-    return regexSearch(col, userId, '', filters.pinned)
+    return regexSearch(col, userId, filters)
   }
 
   try {
+    const must: Document[] = [
+      {
+        equals: {
+          path: 'userId',
+          value: userId,
+        },
+      },
+    ]
+
+    if (filters.archived === 'true') {
+      must.push({ equals: { path: 'isArchived', value: true } })
+    }
+
     const pipeline: Document[] = [
       {
         $search: {
           index: NOTES_SEARCH_INDEX,
           compound: {
-            must: [
-              {
-                equals: {
-                  path: 'userId',
-                  value: userId,
-                },
-              },
-            ],
+            must,
             should: [
               {
                 autocomplete: {
@@ -128,7 +156,7 @@ export async function listMongoNotes(
               {
                 text: {
                   query,
-                  path: ['title', 'markdownText'],
+                  path: ['title', 'markdownText', 'tags'],
                   fuzzy: { maxEdits: 1 },
                 },
               },
@@ -139,23 +167,27 @@ export async function listMongoNotes(
       },
     ]
 
-    if (filters.pinned === 'true') {
-      pipeline.push({ $match: { isPinned: true } })
+    const postMatch: Document = {}
+    if (filters.archived !== 'true') postMatch.isArchived = { $ne: true }
+    if (filters.pinned === 'true') postMatch.isPinned = true
+    if (filters.tag) postMatch.tags = filters.tag.toLowerCase()
+    if (Object.keys(postMatch).length > 0) {
+      pipeline.push({ $match: postMatch })
     }
 
     pipeline.push({ $limit: 50 })
 
     const rows = await col.aggregate<NoteDocument>(pipeline).toArray()
-    return sortNotes(rows.map(serializeMongoNote))
+    return sortNotes(applyListFilters(rows.map(serializeMongoNote), filters))
   } catch {
     // Index missing / Search not enabled yet → regex fallback.
-    return regexSearch(col, userId, query, filters.pinned)
+    return regexSearch(col, userId, filters)
   }
 }
 
 export async function countMongoNotes(userId: string) {
   const col = await notesCollection()
-  return col.countDocuments({ userId })
+  return col.countDocuments({ userId, isArchived: { $ne: true } })
 }
 
 export async function getMongoNote(userId: string, noteId: string) {
@@ -176,7 +208,9 @@ export async function createMongoNote(userId: string, body: Record<string, unkno
     title,
     content: asRecord(content),
     markdownText: extractMarkdown(content),
+    tags: normalizeNoteTags(body.tags),
     isPinned: Boolean(body.isPinned),
+    isArchived: Boolean(body.isArchived),
     createdAt: now,
     updatedAt: now,
   }
@@ -199,7 +233,9 @@ export async function updateMongoNote(
     updates.content = asRecord(body.content)
     updates.markdownText = extractMarkdown(body.content)
   }
+  if (body.tags !== undefined) updates.tags = normalizeNoteTags(body.tags)
   if (typeof body.isPinned === 'boolean') updates.isPinned = body.isPinned
+  if (typeof body.isArchived === 'boolean') updates.isArchived = body.isArchived
 
   const result = await col.findOneAndUpdate(
     { _id: noteId, userId },
@@ -225,7 +261,9 @@ export async function upsertMongoNote(note: Note) {
     title: note.title,
     content: asRecord(note.content),
     markdownText: extractMarkdown(note.content),
+    tags: normalizeNoteTags(note.tags),
     isPinned: note.isPinned,
+    isArchived: note.isArchived,
     createdAt: new Date(note.createdAt),
     updatedAt: new Date(note.updatedAt),
   }
