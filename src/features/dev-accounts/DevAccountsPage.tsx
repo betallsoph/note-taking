@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -10,13 +10,14 @@ import {
   FolderSimple,
   Key,
   FileText,
+  ArrowLeft,
+  CaretRight,
 } from '@phosphor-icons/react'
 import { api } from '@/services/api'
 import { PageHeader, EmptyState, Skeleton } from '@/components/ui/misc'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import type { DevAccount, DevCredentialKind, DevProject } from '@/types'
@@ -72,7 +73,7 @@ function maskEnvContent(content: string) {
 }
 
 function credentialLabel(kind?: string) {
-  return credentialTypes.find((item) => item.value === kind)?.label ?? 'Secret'
+  return credentialTypes.find((item) => item.value === kind)?.label ?? 'Entry'
 }
 
 function environmentLabel(value?: string) {
@@ -81,6 +82,10 @@ function environmentLabel(value?: string) {
 
 function defaultEnvFileName(environment: string) {
   return environment === 'prod' ? 'Production .env' : `${environmentLabel(environment)} .env`
+}
+
+function entryCountLabel(count: number) {
+  return `${count} ${count === 1 ? 'entry' : 'entries'}`
 }
 
 async function copyText(value: string) {
@@ -93,6 +98,7 @@ async function copyText(value: string) {
 
 export function DevAccountsPage() {
   const queryClient = useQueryClient()
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<DevProject | null>(null)
@@ -108,10 +114,15 @@ export function DevAccountsPage() {
     queryFn: api.devAccounts.listProjects,
   })
 
+  const selectedProject = useMemo(
+    () => projects?.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
+  )
+
   const vaultStats = useMemo(() => {
     const projectCount = projects?.length ?? 0
-    const secretCount = projects?.reduce((sum, project) => sum + (project.accounts?.length ?? 0), 0) ?? 0
-    return { projectCount, secretCount }
+    const entryCount = projects?.reduce((sum, project) => sum + (project.accounts?.length ?? 0), 0) ?? 0
+    return { projectCount, entryCount }
   }, [projects])
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dev-accounts'] })
@@ -127,7 +138,10 @@ export function DevAccountsPage() {
 
   const deleteProjectMutation = useMutation({
     mutationFn: api.devAccounts.deleteProject,
-    onSuccess: invalidate,
+    onSuccess: (_data, projectId) => {
+      if (selectedProjectId === projectId) setSelectedProjectId(null)
+      invalidate()
+    },
   })
 
   const updateAccountMutation = useMutation({
@@ -182,6 +196,8 @@ export function DevAccountsPage() {
 
     if (preferredProjectId) {
       setProjectChoice(preferredProjectId)
+    } else if (selectedProjectId) {
+      setProjectChoice(selectedProjectId)
     } else if (projects && projects.length > 0) {
       setProjectChoice(projects[0].id)
     } else {
@@ -217,16 +233,36 @@ export function DevAccountsPage() {
     setEditProjectOpen(true)
   }
 
+  function openNewProjectOnly() {
+    setEditingProject(null)
+    setProjectForm(emptyProject)
+    setEditProjectOpen(true)
+  }
+
   function submitEditProject(e: React.FormEvent) {
     e.preventDefault()
-    if (!editingProject) return
-    updateProjectMutation.mutate({
-      id: editingProject.id,
-      data: {
-        name: projectForm.name.trim(),
+    if (editingProject) {
+      updateProjectMutation.mutate({
+        id: editingProject.id,
+        data: {
+          name: projectForm.name.trim(),
+          description: projectForm.description.trim() || null,
+        },
+      })
+      return
+    }
+
+    const name = projectForm.name.trim()
+    if (!name) return
+    void (async () => {
+      const project = await api.devAccounts.createProject({
+        name,
         description: projectForm.description.trim() || null,
-      },
-    })
+      })
+      await invalidate()
+      closeEditProjectDialog()
+      setSelectedProjectId(project.id)
+    })()
   }
 
   async function submitForm(e: React.FormEvent) {
@@ -266,9 +302,11 @@ export function DevAccountsPage() {
           description: projectForm.description.trim() || null,
         })
         projectId = project.id
+        setSelectedProjectId(project.id)
       }
 
       await api.devAccounts.createAccount(projectId, accountPayload)
+      setSelectedProjectId(projectId)
       await invalidate()
       closeFormDialog()
     } catch {
@@ -281,248 +319,314 @@ export function DevAccountsPage() {
   }
 
   const formBusy = submitting || updateAccountMutation.isPending
+  const viewingProject = Boolean(selectedProject)
+
+  useEffect(() => {
+    if (selectedProjectId && projects && !selectedProject && !isLoading) {
+      setSelectedProjectId(null)
+    }
+  }, [selectedProjectId, projects, selectedProject, isLoading])
 
   return (
     <div>
       <PageHeader
-        title="Dev Vault"
+        title={
+          viewingProject && selectedProject ? (
+            <span className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="-ml-2"
+                onClick={() => setSelectedProjectId(null)}
+                title="Back to projects"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <span className="truncate">{selectedProject.name}</span>
+            </span>
+          ) : (
+            'Dev Vault'
+          )
+        }
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => openAddForm(undefined, { kind: 'env_file' })}>
-              <FileText className="h-4 w-4" /> Paste .env
-            </Button>
-            <Button onClick={() => openAddForm()}>
-              <Plus className="h-4 w-4" /> New entry
-            </Button>
-          </div>
+          viewingProject && selectedProject ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => openAddForm(selectedProject.id, { kind: 'env_file' })}
+              >
+                <FileText className="h-4 w-4" /> Paste .env
+              </Button>
+              <Button onClick={() => openAddForm(selectedProject.id)}>
+                <Plus className="h-4 w-4" /> New entry
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => openAddForm(undefined, { kind: 'env_file' })}>
+                <FileText className="h-4 w-4" /> Paste .env
+              </Button>
+              <Button onClick={openNewProjectOnly}>
+                <Plus className="h-4 w-4" /> New project
+              </Button>
+            </div>
+          )
         }
       />
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        <Badge variant="secondary">{vaultStats.projectCount} projects</Badge>
-        <Badge variant="secondary">{vaultStats.secretCount} secrets</Badge>
-        <Badge variant="outline">Grouped by project</Badge>
-      </div>
+      {!viewingProject && (
+        <div className="mb-5 flex flex-wrap gap-2">
+          <Badge variant="secondary">{vaultStats.projectCount} projects</Badge>
+          <Badge variant="secondary">{vaultStats.entryCount} entries</Badge>
+        </div>
+      )}
 
       {isLoading ? (
         <Skeleton className="h-64" />
-      ) : projects?.length === 0 ? (
-        <EmptyState
-          title="No project secrets yet"
-          description="Create a project and store the first API key, database user, or connection string."
-          action={<Button onClick={() => openAddForm(undefined, { kind: 'env_file' })}>Paste .env</Button>}
-        />
-      ) : (
-        <div className="space-y-6">
-          {projects?.map((project) => (
-            <Card key={project.id}>
-              <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-                <div className="min-w-0">
-                  <CardTitle className="flex items-center gap-2">
-                    <FolderSimple className="h-5 w-5 shrink-0 text-muted-foreground" weight="duotone" />
-                    <span className="truncate">{project.name}</span>
-                  </CardTitle>
-                  {project.description && (
-                    <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
-                  )}
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {project.accounts?.length ?? 0} secret
-                    {(project.accounts?.length ?? 0) === 1 ? '' : 's'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button variant="outline" size="sm" onClick={() => openAddForm(project.id, { kind: 'env_file' })}>
-                    <FileText className="h-4 w-4" /> .env
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => openAddForm(project.id)}>
-                    <Plus className="h-4 w-4" /> Entry
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => openEditProject(project)}>
-                    <PencilSimple className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      if (confirm(`Delete project "${project.name}" and every secret inside it?`)) {
-                        deleteProjectMutation.mutate(project.id)
-                      }
-                    }}
-                  >
-                    <Trash className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {(project.accounts?.length ?? 0) === 0 ? (
-                  <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-                    No secrets yet. Add the first API key, DB user, or connection string for this project.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {project.accounts?.map((account) => {
-                      const showSecret = visibleSecrets[account.id]
-                      const envFile = isEnvFileKind(account.kind)
-                      return (
-                        <div key={account.id} className="rounded-md border px-4 py-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1 space-y-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                {envFile ? (
-                                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
-                                ) : (
-                                  <Key className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
-                                )}
-                                <p className="font-medium">{account.name}</p>
-                                <Badge variant="secondary">{credentialLabel(account.kind)}</Badge>
-                                <Badge variant="outline">{environmentLabel(account.environment)}</Badge>
-                                {account.provider && <Badge variant="outline">{account.provider}</Badge>}
-                              </div>
+      ) : viewingProject && selectedProject ? (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              {selectedProject.description && (
+                <p className="text-sm text-muted-foreground">{selectedProject.description}</p>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {entryCountLabel(selectedProject.accounts?.length ?? 0)}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={() => openEditProject(selectedProject)}>
+                <PencilSimple className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  if (
+                    confirm(`Delete project "${selectedProject.name}" and every entry inside it?`)
+                  ) {
+                    deleteProjectMutation.mutate(selectedProject.id)
+                  }
+                }}
+              >
+                <Trash className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
 
-                              {envFile ? (
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs uppercase tracking-wide text-muted-foreground opacity-70">
-                                      Contents
-                                    </span>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7"
-                                      onClick={() => copyText(account.password)}
-                                    >
-                                      <Copy className="h-3.5 w-3.5" /> Copy all
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7"
-                                      onClick={() => toggleSecret(account.id)}
-                                      title={showSecret ? 'Hide .env' : 'Show .env'}
-                                    >
-                                      {showSecret ? (
-                                        <EyeSlash className="h-3.5 w-3.5" />
-                                      ) : (
-                                        <Eye className="h-3.5 w-3.5" />
-                                      )}
-                                    </Button>
-                                  </div>
-                                  <pre className="max-h-48 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground">
-                                    {showSecret ? account.password : maskEnvContent(account.password)}
-                                  </pre>
-                                </div>
-                              ) : (
-                                <div className="grid gap-2 text-sm text-muted-foreground lg:grid-cols-2">
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                      Identifier
-                                    </span>
-                                    <span className="truncate font-mono text-foreground">
-                                      {account.username}
-                                    </span>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7"
-                                      onClick={() => copyText(account.username)}
-                                      title="Copy identifier"
-                                    >
-                                      <Copy className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </div>
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                      Secret
-                                    </span>
-                                    <span className="truncate font-mono text-foreground">
-                                      {showSecret ? account.password : '••••••••••••'}
-                                    </span>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7"
-                                      onClick={() => toggleSecret(account.id)}
-                                      title={showSecret ? 'Hide secret' : 'Show secret'}
-                                    >
-                                      {showSecret ? (
-                                        <EyeSlash className="h-3.5 w-3.5" />
-                                      ) : (
-                                        <Eye className="h-3.5 w-3.5" />
-                                      )}
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7"
-                                      onClick={() => copyText(account.password)}
-                                      title="Copy secret"
-                                    >
-                                      <Copy className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
+          {(selectedProject.accounts?.length ?? 0) === 0 ? (
+            <EmptyState
+              title="No entries yet"
+              description="Paste a full .env file or add an API key / connection string for this project."
+              action={
+                <Button onClick={() => openAddForm(selectedProject.id, { kind: 'env_file' })}>
+                  Paste .env
+                </Button>
+              }
+            />
+          ) : (
+            <div className="space-y-2">
+              {selectedProject.accounts?.map((account) => {
+                const showSecret = visibleSecrets[account.id]
+                const envFile = isEnvFileKind(account.kind)
+                return (
+                  <div key={account.id} className="rounded-md border px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {envFile ? (
+                            <FileText
+                              className="h-4 w-4 shrink-0 text-muted-foreground"
+                              weight="duotone"
+                            />
+                          ) : (
+                            <Key className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
+                          )}
+                          <p className="font-medium">{account.name}</p>
+                          <Badge variant="secondary">{credentialLabel(account.kind)}</Badge>
+                          <Badge variant="outline">{environmentLabel(account.environment)}</Badge>
+                          {account.provider && <Badge variant="outline">{account.provider}</Badge>}
+                        </div>
 
-                              {account.url && (
-                                <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-                                  <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                    URL
-                                  </span>
-                                  <span className="truncate font-mono text-foreground">{account.url}</span>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => copyText(account.url ?? '')}
-                                    title="Copy URL"
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              )}
-
-                              {account.description && (
-                                <p className="text-sm text-muted-foreground">{account.description}</p>
-                              )}
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
+                        {envFile ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs uppercase tracking-wide text-muted-foreground opacity-70">
+                                Contents
+                              </span>
                               <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => openEditAccount(project.id, account)}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7"
+                                onClick={() => copyText(account.password)}
                               >
-                                <PencilSimple className="h-4 w-4" />
+                                <Copy className="h-3.5 w-3.5" /> Copy all
                               </Button>
                               <Button
+                                type="button"
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => {
-                                  if (confirm(`Delete secret "${account.name}"?`)) {
-                                    deleteAccountMutation.mutate({
-                                      projectId: project.id,
-                                      accountId: account.id,
-                                    })
-                                  }
-                                }}
+                                className="h-7 w-7"
+                                onClick={() => toggleSecret(account.id)}
+                                title={showSecret ? 'Hide .env' : 'Show .env'}
                               >
-                                <Trash className="h-4 w-4" />
+                                {showSecret ? (
+                                  <EyeSlash className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Eye className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </div>
+                            <pre className="max-h-48 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground">
+                              {showSecret ? account.password : maskEnvContent(account.password)}
+                            </pre>
+                          </div>
+                        ) : (
+                          <div className="grid gap-2 text-sm text-muted-foreground lg:grid-cols-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
+                                Identifier
+                              </span>
+                              <span className="truncate font-mono text-foreground">
+                                {account.username}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => copyText(account.username)}
+                                title="Copy identifier"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
+                                Secret
+                              </span>
+                              <span className="truncate font-mono text-foreground">
+                                {showSecret ? account.password : '••••••••••••'}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => toggleSecret(account.id)}
+                                title={showSecret ? 'Hide secret' : 'Show secret'}
+                              >
+                                {showSecret ? (
+                                  <EyeSlash className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Eye className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => copyText(account.password)}
+                                title="Copy secret"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </div>
-                        </div>
-                      )
-                    })}
+                        )}
+
+                        {account.url && (
+                          <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                            <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
+                              URL
+                            </span>
+                            <span className="truncate font-mono text-foreground">{account.url}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => copyText(account.url ?? '')}
+                              title="Copy URL"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+
+                        {account.description && (
+                          <p className="text-sm text-muted-foreground">{account.description}</p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditAccount(selectedProject.id, account)}
+                        >
+                          <PencilSimple className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            if (confirm(`Delete entry "${account.name}"?`)) {
+                              deleteAccountMutation.mutate({
+                                projectId: selectedProject.id,
+                                accountId: account.id,
+                              })
+                            }
+                          }}
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ) : projects?.length === 0 ? (
+        <EmptyState
+          title="No projects yet"
+          description="Create a project, then paste a .env file or add credentials inside it."
+          action={
+            <Button onClick={() => openAddForm(undefined, { kind: 'env_file' })}>Paste .env</Button>
+          }
+        />
+      ) : (
+        <div className="space-y-2">
+          {projects?.map((project) => {
+            const count = project.accounts?.length ?? 0
+            return (
+              <button
+                key={project.id}
+                type="button"
+                onClick={() => setSelectedProjectId(project.id)}
+                className="flex w-full items-center gap-3 rounded-md border px-4 py-3 text-left transition-colors hover:bg-muted/50"
+              >
+                <FolderSimple
+                  className="h-5 w-5 shrink-0 text-muted-foreground"
+                  weight="duotone"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{project.name}</p>
+                  {project.description ? (
+                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                      {project.description}
+                    </p>
+                  ) : null}
+                  <p className="mt-0.5 text-xs text-muted-foreground">{entryCountLabel(count)}</p>
+                </div>
+                <CaretRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -699,7 +803,7 @@ export function DevAccountsPage() {
                     spellCheck={false}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Copy from IDE or Vercel, paste nguyên khối. Bấm Copy all để paste lại chỗ khác.
+                    Paste the whole block from your IDE or Vercel. Use Copy all to paste it elsewhere later.
                   </p>
                 </div>
               )}
@@ -738,7 +842,7 @@ export function DevAccountsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Project</DialogTitle>
+            <DialogTitle>{editingProject ? 'Edit Project' : 'New Project'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={submitEditProject} className="space-y-4">
             <Input
@@ -753,7 +857,7 @@ export function DevAccountsPage() {
               onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
             />
             <Button type="submit" className="w-full" disabled={updateProjectMutation.isPending}>
-              Save
+              {editingProject ? 'Save' : 'Create project'}
             </Button>
           </form>
         </DialogContent>
