@@ -111,6 +111,7 @@ export interface Flashcard {
   answer: string
   difficulty: Difficulty
   personalNotes: string | null
+  sourceNoteId: string | null
   nextReviewAt: string | null
   reviewIntervalDays: number
   reviewCount: number

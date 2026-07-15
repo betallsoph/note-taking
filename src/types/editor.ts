@@ -10,6 +10,7 @@ export interface RichTextEditorProps {
   showToolbar?: boolean
   showSearch?: boolean
   autoSaveDelay?: number
+  onAddFlashcard?: (selectedText: string) => void
 }
 
 export type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Archive, ArrowLeft, PushPin, Trash } from '@phosphor-icons/react'
+import { Archive, ArrowLeft, Cards, PushPin, Trash } from '@phosphor-icons/react'
 import { api } from '@/services/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/misc'
+import { CreateFlashcardDialog, type FlashcardDraft } from '@/features/flashcards/CreateFlashcardDialog'
 import { NoteEditor } from './NoteEditor'
 import { NoteTagsInput } from './NoteTagsInput'
 
@@ -15,6 +16,8 @@ export function NoteDetailPage() {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  const [flashcardOpen, setFlashcardOpen] = useState(false)
+  const [flashcardDraft, setFlashcardDraft] = useState<FlashcardDraft | null>(null)
 
   const { data: note, isLoading } = useQuery({
     queryKey: ['note', id],
@@ -95,6 +98,21 @@ export function NoteDetailPage() {
           className="border-none bg-transparent px-0 text-2xl font-semibold tracking-tight shadow-none focus-visible:ring-0"
           placeholder="Untitled"
         />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setFlashcardDraft({
+              question: title.trim() || note.title || 'Untitled',
+              answer: '',
+              sourceNoteId: note.id,
+            })
+            setFlashcardOpen(true)
+          }}
+        >
+          <Cards className="h-4 w-4" />
+          Flashcard
+        </Button>
         <Button variant="outline" size="sm" onClick={() => pinMutation.mutate()}>
           <PushPin className="h-4 w-4" weight={note.isPinned ? 'fill' : 'regular'} />
           {note.isPinned ? 'Pinned' : 'Pin'}
@@ -120,7 +138,15 @@ export function NoteDetailPage() {
         />
       </div>
 
-      <NoteEditor noteId={note.id} content={note.content} />
+      <NoteEditor noteId={note.id} content={note.content} noteTitle={title || note.title} noteTags={tags} />
+
+      <CreateFlashcardDialog
+        open={flashcardOpen}
+        onOpenChange={setFlashcardOpen}
+        draft={flashcardDraft}
+        noteTags={tags}
+        title="Add flashcard from note"
+      />
     </div>
   )
 }

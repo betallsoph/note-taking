@@ -858,6 +858,7 @@ export async function createFlashcard(userId: string, body: Record<string, unkno
       answer: String(body.answer),
       difficulty: ((body.difficulty as Difficulty | undefined) ?? 'medium'),
       personalNotes: body.personalNotes ? String(body.personalNotes) : null,
+      sourceNoteId: optionalString(body.sourceNoteId),
       nextReviewAt: new Date(),
       reviewIntervalDays: 1,
       reviewCount: 0,
@@ -873,6 +874,7 @@ export async function updateFlashcard(userId: string, flashcardId: string, body:
   if (typeof body.answer === 'string') updates.answer = body.answer
   if (typeof body.difficulty === 'string') updates.difficulty = body.difficulty as Difficulty
   if ('personalNotes' in body) updates.personalNotes = body.personalNotes ? String(body.personalNotes) : null
+  if ('sourceNoteId' in body) updates.sourceNoteId = optionalString(body.sourceNoteId)
   if ('nextReviewAt' in body) updates.nextReviewAt = optionalDate(body.nextReviewAt)
   if (typeof body.reviewIntervalDays === 'number') updates.reviewIntervalDays = body.reviewIntervalDays
   if (typeof body.reviewCount === 'number') updates.reviewCount = body.reviewCount
