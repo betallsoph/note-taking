@@ -14,7 +14,7 @@ import {
   updateMongoNote,
   upsertMongoNote,
 } from './mongo-notes.js'
-import { isMongoEnabled } from './mongo.js'
+import { isMongoEnabled, mongoConnectErrorMessage } from './mongo.js'
 import {
   activeNotesStoreLabel,
   resolveNotesStoreMode,
@@ -301,9 +301,14 @@ function isSchemaBootstrapError(error: unknown) {
 function publicMessage(error: unknown, fallback: string) {
   if (!(error instanceof Error)) return fallback
   const msg = error.message
-  if (msg.includes('authentication failed') || msg.includes('bad auth')) {
-    return 'MongoDB authentication failed — check MONGODB_URI password'
+
+  if (msg.startsWith('Cannot connect to MongoDB') || msg.startsWith('MongoDB authentication failed')) {
+    return msg
   }
+
+  const mongoHint = mongoConnectErrorMessage(error)
+  if (mongoHint !== msg) return mongoHint
+
   if (isMissingRelation(error, 'users') || msg.includes('users table missing')) {
     return 'Database not initialized — run npm run db:push against Neon, then redeploy'
   }

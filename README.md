@@ -177,6 +177,20 @@ Yes — this app is serverless-friendly. Atlas M0 free tier works with Vercel if
 7. Database → **Connect** → **Drivers** → copy the `mongodb+srv://...` URI.
 8. Replace `<password>` in the URI (URL-encode special characters).
 
+### Troubleshooting: SSL / 8s timeout on Notes
+
+If create/list notes fails after ~5–8s with an SSL / `tlsv1 alert` / `Server selection timed out` error:
+
+1. **Network Access (most common on Vercel)**  
+   Atlas → Network Access → Add IP Address → **Allow Access from Anywhere** (`0.0.0.0/0`).  
+   Vercel serverless IPs change; without this, TLS handshake fails and the driver waits for the selection timeout.
+2. **Password in `MONGODB_URI`**  
+   Characters like `@ # % /` in the password must be URL-encoded (e.g. `@` → `%40`). Prefer resetting the DB user password to something alphanumeric.
+3. **Redeploy after env change**  
+   Update `MONGODB_URI` in Vercel → Redeploy so the function picks up the new value.
+4. **Quick escape hatch**  
+   Temporarily set `NOTES_STORE=neon` on Vercel if you need Notes working while fixing Atlas.
+
 ### 2. Put the URI in env
 
 Local `.env`:
