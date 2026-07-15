@@ -15,6 +15,7 @@ export type DevCredentialKind =
   | 'webhook_secret'
   | 'ssh_key'
   | 'env_var'
+  | 'env_file'
 
 export interface Category {
   id: string

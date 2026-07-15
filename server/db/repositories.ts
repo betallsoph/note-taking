@@ -1046,7 +1046,10 @@ export async function createDevAccount(userId: string, projectId: string, body: 
       provider: optionalString(body.provider),
       environment: optionalString(body.environment) ?? 'dev',
       name: String(body.name).trim(),
-      username: String(body.username).trim(),
+      username:
+        body.kind === 'env_file'
+          ? (optionalString(body.username) ?? '.env')
+          : String(body.username).trim(),
       password: encryptSecret(String(body.password)),
       url: optionalString(body.url),
       description: optionalString(body.description),

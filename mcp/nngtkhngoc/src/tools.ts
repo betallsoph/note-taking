@@ -45,6 +45,7 @@ const credentialKind = z.enum([
   'webhook_secret',
   'ssh_key',
   'env_var',
+  'env_file',
 ])
 
 function jsonResult(payload: unknown) {

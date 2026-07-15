@@ -104,7 +104,11 @@ router.post('/projects/:id/accounts', async (req, res) => {
   )
 
   const { kind, provider, environment, name, username, password, url, description } = req.body
-  if (!name?.trim() || !username?.trim() || !password?.trim()) {
+  const isEnvFile = kind === 'env_file'
+  if (!name?.trim() || !password?.trim()) {
+    return res.status(400).json({ error: isEnvFile ? 'Name and .env contents are required' : 'Name, identifier, and secret are required' })
+  }
+  if (!isEnvFile && !username?.trim()) {
     return res.status(400).json({ error: 'Name, identifier, and secret are required' })
   }
 
@@ -123,7 +127,7 @@ router.post('/projects/:id/accounts', async (req, res) => {
     provider: provider?.trim() ? provider.trim() : null,
     environment: environment?.trim() ? environment.trim() : 'dev',
     name: name.trim(),
-    username: username.trim(),
+    username: isEnvFile ? (username?.trim() || '.env') : username.trim(),
     password: String(password),
     url: url?.trim() ? url.trim() : null,
     description: description?.trim() ? description.trim() : null,

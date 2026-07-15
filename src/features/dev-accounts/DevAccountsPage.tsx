@@ -9,6 +9,7 @@ import {
   Copy,
   FolderSimple,
   Key,
+  FileText,
 } from '@phosphor-icons/react'
 import { api } from '@/services/api'
 import { PageHeader, EmptyState, Skeleton } from '@/components/ui/misc'
@@ -46,6 +47,7 @@ const emptyAccount: AccountForm = {
 }
 
 const credentialTypes: Array<{ value: DevCredentialKind; label: string }> = [
+  { value: 'env_file', label: 'Env file (.env)' },
   { value: 'api_key', label: 'API Key' },
   { value: 'database', label: 'Database User' },
   { value: 'connection_string', label: 'Connection String' },
@@ -58,12 +60,27 @@ const credentialTypes: Array<{ value: DevCredentialKind; label: string }> = [
 
 const environments = ['dev', 'local', 'staging', 'qa', 'prod', 'sandbox'] as const
 
+function isEnvFileKind(kind?: string) {
+  return kind === 'env_file'
+}
+
+function maskEnvContent(content: string) {
+  return content
+    .split('\n')
+    .map((line) => (line.trim() ? '••••••••••••' : ''))
+    .join('\n')
+}
+
 function credentialLabel(kind?: string) {
   return credentialTypes.find((item) => item.value === kind)?.label ?? 'Secret'
 }
 
 function environmentLabel(value?: string) {
   return value ? value.toUpperCase() : 'DEV'
+}
+
+function defaultEnvFileName(environment: string) {
+  return environment === 'prod' ? 'Production .env' : `${environmentLabel(environment)} .env`
 }
 
 async function copyText(value: string) {
@@ -152,9 +169,15 @@ export function DevAccountsPage() {
     setProjectForm(emptyProject)
   }
 
-  function openAddForm(preferredProjectId?: string) {
+  function openAddForm(preferredProjectId?: string, options?: { kind?: DevCredentialKind }) {
     setEditingAccount(null)
-    setAccountForm(emptyAccount)
+    const kind = options?.kind ?? 'api_key'
+    setAccountForm({
+      ...emptyAccount,
+      kind,
+      name: isEnvFileKind(kind) ? defaultEnvFileName('dev') : '',
+      username: isEnvFileKind(kind) ? '.env' : '',
+    })
     setProjectForm(emptyProject)
 
     if (preferredProjectId) {
@@ -208,12 +231,13 @@ export function DevAccountsPage() {
 
   async function submitForm(e: React.FormEvent) {
     e.preventDefault()
+    const envFile = isEnvFileKind(accountForm.kind)
     const accountPayload = {
       kind: accountForm.kind,
       provider: accountForm.provider.trim() || null,
       environment: accountForm.environment,
       name: accountForm.name.trim(),
-      username: accountForm.username.trim(),
+      username: envFile ? (accountForm.username.trim() || '.env') : accountForm.username.trim(),
       password: accountForm.password,
       url: accountForm.url.trim() || null,
       description: accountForm.description.trim() || null,
@@ -263,9 +287,14 @@ export function DevAccountsPage() {
       <PageHeader
         title="Dev Vault"
         actions={
-          <Button onClick={() => openAddForm()}>
-            <Plus className="h-4 w-4" /> New Secret
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => openAddForm(undefined, { kind: 'env_file' })}>
+              <FileText className="h-4 w-4" /> Paste .env
+            </Button>
+            <Button onClick={() => openAddForm()}>
+              <Plus className="h-4 w-4" /> New entry
+            </Button>
+          </div>
         }
       />
 
@@ -281,7 +310,7 @@ export function DevAccountsPage() {
         <EmptyState
           title="No project secrets yet"
           description="Create a project and store the first API key, database user, or connection string."
-          action={<Button onClick={() => openAddForm()}>Add Secret</Button>}
+          action={<Button onClick={() => openAddForm(undefined, { kind: 'env_file' })}>Paste .env</Button>}
         />
       ) : (
         <div className="space-y-6">
@@ -302,8 +331,11 @@ export function DevAccountsPage() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  <Button variant="outline" size="sm" onClick={() => openAddForm(project.id, { kind: 'env_file' })}>
+                    <FileText className="h-4 w-4" /> .env
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => openAddForm(project.id)}>
-                    <Plus className="h-4 w-4" /> Secret
+                    <Plus className="h-4 w-4" /> Entry
                   </Button>
                   <Button variant="ghost" size="icon" onClick={() => openEditProject(project)}>
                     <PencilSimple className="h-4 w-4" />
@@ -330,70 +362,111 @@ export function DevAccountsPage() {
                   <div className="space-y-2">
                     {project.accounts?.map((account) => {
                       const showSecret = visibleSecrets[account.id]
+                      const envFile = isEnvFileKind(account.kind)
                       return (
                         <div key={account.id} className="rounded-md border px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1 space-y-2">
                               <div className="flex flex-wrap items-center gap-2">
-                                <Key className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
+                                {envFile ? (
+                                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
+                                ) : (
+                                  <Key className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
+                                )}
                                 <p className="font-medium">{account.name}</p>
                                 <Badge variant="secondary">{credentialLabel(account.kind)}</Badge>
                                 <Badge variant="outline">{environmentLabel(account.environment)}</Badge>
                                 {account.provider && <Badge variant="outline">{account.provider}</Badge>}
                               </div>
 
-                              <div className="grid gap-2 text-sm text-muted-foreground lg:grid-cols-2">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                    Identifier
-                                  </span>
-                                  <span className="truncate font-mono text-foreground">
-                                    {account.username}
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => copyText(account.username)}
-                                    title="Copy identifier"
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
+                              {envFile ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs uppercase tracking-wide text-muted-foreground opacity-70">
+                                      Contents
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7"
+                                      onClick={() => copyText(account.password)}
+                                    >
+                                      <Copy className="h-3.5 w-3.5" /> Copy all
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={() => toggleSecret(account.id)}
+                                      title={showSecret ? 'Hide .env' : 'Show .env'}
+                                    >
+                                      {showSecret ? (
+                                        <EyeSlash className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <Eye className="h-3.5 w-3.5" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                  <pre className="max-h-48 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground">
+                                    {showSecret ? account.password : maskEnvContent(account.password)}
+                                  </pre>
                                 </div>
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                    Secret
-                                  </span>
-                                  <span className="truncate font-mono text-foreground">
-                                    {showSecret ? account.password : '••••••••••••'}
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => toggleSecret(account.id)}
-                                    title={showSecret ? 'Hide secret' : 'Show secret'}
-                                  >
-                                    {showSecret ? (
-                                      <EyeSlash className="h-3.5 w-3.5" />
-                                    ) : (
-                                      <Eye className="h-3.5 w-3.5" />
-                                    )}
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => copyText(account.password)}
-                                    title="Copy secret"
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
+                              ) : (
+                                <div className="grid gap-2 text-sm text-muted-foreground lg:grid-cols-2">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
+                                      Identifier
+                                    </span>
+                                    <span className="truncate font-mono text-foreground">
+                                      {account.username}
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={() => copyText(account.username)}
+                                      title="Copy identifier"
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
+                                      Secret
+                                    </span>
+                                    <span className="truncate font-mono text-foreground">
+                                      {showSecret ? account.password : '••••••••••••'}
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={() => toggleSecret(account.id)}
+                                      title={showSecret ? 'Hide secret' : 'Show secret'}
+                                    >
+                                      {showSecret ? (
+                                        <EyeSlash className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <Eye className="h-3.5 w-3.5" />
+                                      )}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={() => copyText(account.password)}
+                                      title="Copy secret"
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
 
                               {account.url && (
                                 <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
@@ -462,7 +535,15 @@ export function DevAccountsPage() {
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingAccount ? 'Edit Secret' : 'New Secret'}</DialogTitle>
+            <DialogTitle>
+              {editingAccount
+                ? isEnvFileKind(editingAccount.kind)
+                  ? 'Edit .env file'
+                  : 'Edit entry'
+                : isEnvFileKind(accountForm.kind)
+                  ? 'Paste .env file'
+                  : 'New entry'}
+            </DialogTitle>
           </DialogHeader>
           <form onSubmit={submitForm} className="space-y-4">
             {!editingAccount && (
@@ -507,9 +588,18 @@ export function DevAccountsPage() {
                 <label className="text-sm font-medium">Type</label>
                 <Select
                   value={accountForm.kind}
-                  onValueChange={(value) =>
-                    setAccountForm((form) => ({ ...form, kind: value as DevCredentialKind }))
-                  }
+                  onValueChange={(value) => {
+                    const kind = value as DevCredentialKind
+                    setAccountForm((form) => ({
+                      ...form,
+                      kind,
+                      username: isEnvFileKind(kind) ? '.env' : form.username,
+                      name:
+                        isEnvFileKind(kind) && !form.name.trim()
+                          ? defaultEnvFileName(form.environment)
+                          : form.name,
+                    }))
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -528,7 +618,16 @@ export function DevAccountsPage() {
                 <label className="text-sm font-medium">Environment</label>
                 <Select
                   value={accountForm.environment}
-                  onValueChange={(value) => setAccountForm((form) => ({ ...form, environment: value }))}
+                  onValueChange={(value) =>
+                    setAccountForm((form) => ({
+                      ...form,
+                      environment: value,
+                      name:
+                        isEnvFileKind(form.kind) && !editingAccount
+                          ? defaultEnvFileName(value)
+                          : form.name,
+                    }))
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -559,23 +658,47 @@ export function DevAccountsPage() {
 
             <div className="space-y-3">
               <Input
-                placeholder="Name (Atlas database user, Stripe secret key)"
+                placeholder={
+                  isEnvFileKind(accountForm.kind)
+                    ? 'Label (Production .env, Vercel env)'
+                    : 'Name (Atlas database user, Stripe secret key)'
+                }
                 value={accountForm.name}
                 onChange={(e) => setAccountForm((f) => ({ ...f, name: e.target.value }))}
                 required
               />
-              <Input
-                placeholder="Identifier (username, key id, env var name)"
-                value={accountForm.username}
-                onChange={(e) => setAccountForm((f) => ({ ...f, username: e.target.value }))}
-                required
-              />
-              <Input
-                placeholder="Secret value / password / connection string"
-                value={accountForm.password}
-                onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
-                required
-              />
+              {!isEnvFileKind(accountForm.kind) && (
+                <>
+                  <Input
+                    placeholder="Identifier (username, key id, env var name)"
+                    value={accountForm.username}
+                    onChange={(e) => setAccountForm((f) => ({ ...f, username: e.target.value }))}
+                    required
+                  />
+                  <Input
+                    placeholder="Secret value / password / connection string"
+                    value={accountForm.password}
+                    onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
+                    required
+                  />
+                </>
+              )}
+              {isEnvFileKind(accountForm.kind) && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Paste full .env block</label>
+                  <Textarea
+                    placeholder={`DATABASE_URL=postgresql://...\nMONGODB_URI=mongodb+srv://...\nACCESS_TOKEN=...`}
+                    value={accountForm.password}
+                    onChange={(e) => setAccountForm((f) => ({ ...f, password: e.target.value }))}
+                    className="min-h-56 font-mono text-xs leading-relaxed"
+                    required
+                    spellCheck={false}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Copy from IDE or Vercel, paste nguyên khối. Bấm Copy all để paste lại chỗ khác.
+                  </p>
+                </div>
+              )}
               <Textarea
                 placeholder="Notes: IP allowlist, role, created by, rotation date, usage"
                 value={accountForm.description}
@@ -584,7 +707,15 @@ export function DevAccountsPage() {
             </div>
 
             <Button type="submit" className="w-full" disabled={formBusy}>
-              {editingAccount ? 'Save secret' : creatingNewProject ? 'Create project & secret' : 'Create secret'}
+              {editingAccount
+                ? 'Save'
+                : creatingNewProject
+                  ? isEnvFileKind(accountForm.kind)
+                    ? 'Create project & save .env'
+                    : 'Create project & entry'
+                  : isEnvFileKind(accountForm.kind)
+                    ? 'Save .env'
+                    : 'Create entry'}
             </Button>
           </form>
         </DialogContent>
