@@ -4,8 +4,9 @@ import 'dotenv/config'
 import { MOCK_USER, isAccessTokenRequired, mockAuth, requireAccessToken } from './middleware/auth.js'
 import { mockStore } from './mock-store.js'
 import { databaseMode } from './db/index.js'
-import { isMongoEnabled, mongoMode } from './db/mongo.js'
+import { mongoMode } from './db/mongo.js'
 import { countNotesAnywhere, warmMongoNotesIndexes, activeNotesStore } from './db/notes-store.js'
+import { resolveNotesStoreMode, usesMongoNotesBackup } from './db/notes-config.js'
 import { ensureUser, getDashboardStats, isDatabaseEnabled } from './db/repositories.js'
 import articlesRouter from './routes/articles.js'
 import categoriesRouter from './routes/categories.js'
@@ -27,21 +28,20 @@ if (isDatabaseEnabled()) {
   })
 }
 
-if (isMongoEnabled()) {
-  warmMongoNotesIndexes()
-}
+warmMongoNotesIndexes()
 
 app.use(cors())
 app.use(express.json())
 app.use(mockAuth)
 
-app.get('/api/health', async (_req, res) => {
-  const notesStore = await activeNotesStore()
+app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     mode: databaseMode,
     mongo: mongoMode,
-    notesStore,
+    notesStore: activeNotesStore(),
+    notesStoreMode: resolveNotesStoreMode(),
+    mongoNotesBackup: usesMongoNotesBackup(),
     accessTokenRequired: isAccessTokenRequired(),
   })
 })

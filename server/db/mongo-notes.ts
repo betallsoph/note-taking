@@ -215,3 +215,19 @@ export async function deleteMongoNote(userId: string, noteId: string) {
   const result = await col.deleteOne({ _id: noteId, userId })
   return result.deletedCount > 0
 }
+
+/** Upsert a Neon note into Atlas (backup / migration). */
+export async function upsertMongoNote(note: Note) {
+  const col = await notesCollection()
+  const doc: NoteDocument = {
+    _id: note.id,
+    userId: note.userId,
+    title: note.title,
+    content: asRecord(note.content),
+    markdownText: extractMarkdown(note.content),
+    isPinned: note.isPinned,
+    createdAt: new Date(note.createdAt),
+    updatedAt: new Date(note.updatedAt),
+  }
+  await col.replaceOne({ _id: note.id, userId: note.userId }, doc, { upsert: true })
+}

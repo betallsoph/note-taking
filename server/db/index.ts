@@ -13,4 +13,8 @@ const client = connectionString ? postgres(connectionString, { prepare: false })
 export const db = client ? drizzle(client, { schema }) : null
 export const databaseMode = db ? 'neon' : 'mock'
 
+export function isDatabaseEnabled() {
+  return db !== null
+}
+
 export type Database = NonNullable<typeof db>
