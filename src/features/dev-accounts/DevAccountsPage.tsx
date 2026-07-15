@@ -234,12 +234,12 @@ export function DevAccountsPage() {
     const envFile = isEnvFileKind(accountForm.kind)
     const accountPayload = {
       kind: accountForm.kind,
-      provider: accountForm.provider.trim() || null,
+      provider: envFile ? null : accountForm.provider.trim() || null,
       environment: accountForm.environment,
       name: accountForm.name.trim(),
       username: envFile ? (accountForm.username.trim() || '.env') : accountForm.username.trim(),
       password: accountForm.password,
-      url: accountForm.url.trim() || null,
+      url: envFile ? null : accountForm.url.trim() || null,
       description: accountForm.description.trim() || null,
     }
 
@@ -594,6 +594,8 @@ export function DevAccountsPage() {
                       ...form,
                       kind,
                       username: isEnvFileKind(kind) ? '.env' : form.username,
+                      provider: isEnvFileKind(kind) ? '' : form.provider,
+                      url: isEnvFileKind(kind) ? '' : form.url,
                       name:
                         isEnvFileKind(kind) && !form.name.trim()
                           ? defaultEnvFileName(form.environment)
@@ -643,18 +645,20 @@ export function DevAccountsPage() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input
-                placeholder="Provider (MongoDB Atlas, Neon, Stripe)"
-                value={accountForm.provider}
-                onChange={(e) => setAccountForm((f) => ({ ...f, provider: e.target.value }))}
-              />
-              <Input
-                placeholder="Console URL or docs URL"
-                value={accountForm.url}
-                onChange={(e) => setAccountForm((f) => ({ ...f, url: e.target.value }))}
-              />
-            </div>
+            {!isEnvFileKind(accountForm.kind) && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  placeholder="Provider (MongoDB Atlas, Neon, Stripe)"
+                  value={accountForm.provider}
+                  onChange={(e) => setAccountForm((f) => ({ ...f, provider: e.target.value }))}
+                />
+                <Input
+                  placeholder="Console URL or docs URL"
+                  value={accountForm.url}
+                  onChange={(e) => setAccountForm((f) => ({ ...f, url: e.target.value }))}
+                />
+              </div>
+            )}
 
             <div className="space-y-3">
               <Input
@@ -700,7 +704,11 @@ export function DevAccountsPage() {
                 </div>
               )}
               <Textarea
-                placeholder="Notes: IP allowlist, role, created by, rotation date, usage"
+                placeholder={
+                  isEnvFileKind(accountForm.kind)
+                    ? 'Notes (optional): which deploy, last rotated, etc.'
+                    : 'Notes: IP allowlist, role, created by, rotation date, usage'
+                }
                 value={accountForm.description}
                 onChange={(e) => setAccountForm((f) => ({ ...f, description: e.target.value }))}
               />
