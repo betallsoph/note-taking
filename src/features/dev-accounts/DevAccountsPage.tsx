@@ -102,6 +102,7 @@ function entryCountLabel(count: number) {
 export function DevAccountsPage() {
   const queryClient = useQueryClient()
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [viewingAccount, setViewingAccount] = useState<DevAccount | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<DevProject | null>(null)
@@ -109,7 +110,7 @@ export function DevAccountsPage() {
   const [projectChoice, setProjectChoice] = useState<string>(NEW_PROJECT_VALUE)
   const [projectForm, setProjectForm] = useState<ProjectForm>(emptyProject)
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccount)
-  const [visibleSecrets, setVisibleSecrets] = useState<Record<string, boolean>>({})
+  const [revealInModal, setRevealInModal] = useState(false)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -122,6 +123,11 @@ export function DevAccountsPage() {
     () => projects?.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
   )
+
+  const viewingAccountLive = useMemo(() => {
+    if (!viewingAccount || !selectedProject) return null
+    return selectedProject.accounts?.find((account) => account.id === viewingAccount.id) ?? null
+  }, [viewingAccount, selectedProject])
 
   const vaultStats = useMemo(() => {
     const projectCount = projects?.length ?? 0
@@ -194,6 +200,16 @@ export function DevAccountsPage() {
     }
   }
 
+  function closeViewDialog() {
+    setViewingAccount(null)
+    setRevealInModal(false)
+  }
+
+  function openViewAccount(account: DevAccount) {
+    setViewingAccount(account)
+    setRevealInModal(false)
+  }
+
   function closeFormDialog() {
     setFormOpen(false)
     setEditingAccount(null)
@@ -236,6 +252,7 @@ export function DevAccountsPage() {
   }
 
   function openEditAccount(projectId: string, account: DevAccount) {
+    closeViewDialog()
     setEditingAccount(account)
     setProjectChoice(projectId)
     setProjectForm(emptyProject)
@@ -345,12 +362,16 @@ export function DevAccountsPage() {
     }
   }
 
-  function toggleSecret(accountId: string) {
-    setVisibleSecrets((prev) => ({ ...prev, [accountId]: !prev[accountId] }))
-  }
-
   const formBusy = submitting || updateAccountMutation.isPending
   const viewingProject = Boolean(selectedProject)
+  const modalAccount = viewingAccountLive ?? viewingAccount
+  const modalEnvFile = isEnvFileKind(modalAccount?.kind)
+
+  useEffect(() => {
+    if (viewingAccount && selectedProject && !viewingAccountLive) {
+      closeViewDialog()
+    }
+  }, [viewingAccount, selectedProject, viewingAccountLive])
 
   return (
     <div>
@@ -363,7 +384,10 @@ export function DevAccountsPage() {
                 variant="ghost"
                 size="icon"
                 className="-ml-2"
-                onClick={() => setSelectedProjectId(null)}
+                onClick={() => {
+                  closeViewDialog()
+                  setSelectedProjectId(null)
+                }}
                 title="Back to projects"
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -453,184 +477,67 @@ export function DevAccountsPage() {
           ) : (
             <div className="space-y-2">
               {selectedProject.accounts?.map((account) => {
-                const showSecret = visibleSecrets[account.id]
                 const envFile = isEnvFileKind(account.kind)
-                const copyAllKey = `copy-all:${account.id}`
-                const copiedAll = copiedKey === copyAllKey
                 return (
-                  <div key={account.id} className="rounded-md border px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1 space-y-2">
+                  <div
+                    key={account.id}
+                    className="flex items-center gap-2 rounded-md border transition-colors hover:bg-muted/50"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openViewAccount(account)}
+                      className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
+                    >
+                      {envFile ? (
+                        <FileText
+                          className="h-4 w-4 shrink-0 text-muted-foreground"
+                          weight="duotone"
+                        />
+                      ) : (
+                        <Key className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
+                      )}
+                      <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          {envFile ? (
-                            <FileText
-                              className="h-4 w-4 shrink-0 text-muted-foreground"
-                              weight="duotone"
-                            />
-                          ) : (
-                            <Key className="h-4 w-4 shrink-0 text-muted-foreground" weight="duotone" />
-                          )}
                           <p className="font-medium">{account.name}</p>
                           <Badge variant="secondary">{credentialLabel(account.kind)}</Badge>
                           <Badge variant="outline">{environmentLabel(account.environment)}</Badge>
                           {account.provider && <Badge variant="outline">{account.provider}</Badge>}
                         </div>
-
-                        {envFile ? (
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs uppercase tracking-wide text-muted-foreground opacity-70">
-                                Contents
-                              </span>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7"
-                                onClick={() => copyText(account.password, copyAllKey)}
-                              >
-                                {copiedAll ? (
-                                  <>
-                                    <Check className="h-3.5 w-3.5" /> Copied
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="h-3.5 w-3.5" /> Copy all
-                                  </>
-                                )}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => toggleSecret(account.id)}
-                                title={showSecret ? 'Hide .env' : 'Show .env'}
-                              >
-                                {showSecret ? (
-                                  <EyeSlash className="h-3.5 w-3.5" />
-                                ) : (
-                                  <Eye className="h-3.5 w-3.5" />
-                                )}
-                              </Button>
-                            </div>
-                            <pre className="max-h-48 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground">
-                              {showSecret ? account.password : maskEnvContent(account.password)}
-                            </pre>
-                          </div>
-                        ) : (
-                          <div className="grid gap-2 text-sm text-muted-foreground lg:grid-cols-2">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                Identifier
-                              </span>
-                              <span className="truncate font-mono text-foreground">
-                                {account.username}
-                              </span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => copyText(account.username, `user:${account.id}`)}
-                                title="Copy identifier"
-                              >
-                                {copiedKey === `user:${account.id}` ? (
-                                  <Check className="h-3.5 w-3.5" />
-                                ) : (
-                                  <Copy className="h-3.5 w-3.5" />
-                                )}
-                              </Button>
-                            </div>
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                                Value
-                              </span>
-                              <span className="truncate font-mono text-foreground">
-                                {showSecret ? account.password : '••••••••••••'}
-                              </span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => toggleSecret(account.id)}
-                                title={showSecret ? 'Hide value' : 'Show value'}
-                              >
-                                {showSecret ? (
-                                  <EyeSlash className="h-3.5 w-3.5" />
-                                ) : (
-                                  <Eye className="h-3.5 w-3.5" />
-                                )}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => copyText(account.password, `pass:${account.id}`)}
-                                title="Copy value"
-                              >
-                                {copiedKey === `pass:${account.id}` ? (
-                                  <Check className="h-3.5 w-3.5" />
-                                ) : (
-                                  <Copy className="h-3.5 w-3.5" />
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-
-                        {account.url && (
-                          <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-                            <span className="shrink-0 text-xs uppercase tracking-wide opacity-70">
-                              URL
-                            </span>
-                            <span className="truncate font-mono text-foreground">{account.url}</span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => copyText(account.url ?? '', `url:${account.id}`)}
-                              title="Copy URL"
-                            >
-                              {copiedKey === `url:${account.id}` ? (
-                                <Check className="h-3.5 w-3.5" />
-                              ) : (
-                                <Copy className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
-                          </div>
-                        )}
-
-                        {account.description && (
-                          <p className="text-sm text-muted-foreground">{account.description}</p>
-                        )}
+                        {account.description ? (
+                          <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                            {account.description}
+                          </p>
+                        ) : null}
                       </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEditAccount(selectedProject.id, account)}
-                        >
-                          <PencilSimple className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            if (confirm(`Delete entry "${account.name}"?`)) {
-                              deleteAccountMutation.mutate({
-                                projectId: selectedProject.id,
-                                accountId: account.id,
-                              })
-                            }
-                          }}
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <CaretRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+                    <div className="flex shrink-0 items-center gap-1 pr-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          closeViewDialog()
+                          openEditAccount(selectedProject.id, account)
+                        }}
+                      >
+                        <PencilSimple className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (confirm(`Delete entry "${account.name}"?`)) {
+                            deleteAccountMutation.mutate({
+                              projectId: selectedProject.id,
+                              accountId: account.id,
+                            })
+                          }
+                        }}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 )
@@ -676,6 +583,189 @@ export function DevAccountsPage() {
           })}
         </div>
       )}
+
+      <Dialog
+        open={Boolean(modalAccount)}
+        onOpenChange={(open) => {
+          if (!open) closeViewDialog()
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          {modalAccount && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex flex-wrap items-center gap-2 pr-8">
+                  <span>{modalAccount.name}</span>
+                  <Badge variant="secondary">{credentialLabel(modalAccount.kind)}</Badge>
+                  <Badge variant="outline">{environmentLabel(modalAccount.environment)}</Badge>
+                  {modalAccount.provider && (
+                    <Badge variant="outline">{modalAccount.provider}</Badge>
+                  )}
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {modalEnvFile ? (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs uppercase tracking-wide text-muted-foreground opacity-70">
+                        Contents
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7"
+                        onClick={() => copyText(modalAccount.password, `copy-all:${modalAccount.id}`)}
+                      >
+                        {copiedKey === `copy-all:${modalAccount.id}` ? (
+                          <>
+                            <Check className="h-3.5 w-3.5" /> Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" /> Copy all
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setRevealInModal((prev) => !prev)}
+                        title={revealInModal ? 'Hide .env' : 'Show .env'}
+                      >
+                        {revealInModal ? (
+                          <EyeSlash className="h-3.5 w-3.5" />
+                        ) : (
+                          <Eye className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                    <pre className="max-h-[50vh] overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground">
+                      {revealInModal
+                        ? modalAccount.password
+                        : maskEnvContent(modalAccount.password)}
+                    </pre>
+                  </div>
+                ) : (
+                  <div className="space-y-3 text-sm">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="shrink-0 text-xs uppercase tracking-wide text-muted-foreground opacity-70">
+                        Identifier
+                      </span>
+                      <span className="truncate font-mono">{modalAccount.username}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => copyText(modalAccount.username, `user:${modalAccount.id}`)}
+                      >
+                        {copiedKey === `user:${modalAccount.id}` ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="shrink-0 text-xs uppercase tracking-wide text-muted-foreground opacity-70">
+                        Value
+                      </span>
+                      <span className="min-w-0 flex-1 break-all font-mono">
+                        {revealInModal ? modalAccount.password : '••••••••••••'}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setRevealInModal((prev) => !prev)}
+                      >
+                        {revealInModal ? (
+                          <EyeSlash className="h-3.5 w-3.5" />
+                        ) : (
+                          <Eye className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => copyText(modalAccount.password, `pass:${modalAccount.id}`)}
+                      >
+                        {copiedKey === `pass:${modalAccount.id}` ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                    {modalAccount.url && (
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 text-xs uppercase tracking-wide text-muted-foreground opacity-70">
+                          URL
+                        </span>
+                        <span className="truncate font-mono">{modalAccount.url}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => copyText(modalAccount.url ?? '', `url:${modalAccount.id}`)}
+                        >
+                          {copiedKey === `url:${modalAccount.id}` ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {modalAccount.description && (
+                  <p className="text-sm text-muted-foreground">{modalAccount.description}</p>
+                )}
+
+                {selectedProject && (
+                  <div className="flex flex-wrap gap-2 border-t pt-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        const account = modalAccount
+                        closeViewDialog()
+                        openEditAccount(selectedProject.id, account)
+                      }}
+                    >
+                      <PencilSimple className="h-4 w-4" /> Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        if (!confirm(`Delete entry "${modalAccount.name}"?`)) return
+                        deleteAccountMutation.mutate({
+                          projectId: selectedProject.id,
+                          accountId: modalAccount.id,
+                        })
+                        closeViewDialog()
+                      }}
+                    >
+                      <Trash className="h-4 w-4" /> Delete
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={formOpen}
