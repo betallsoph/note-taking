@@ -1,5 +1,4 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
-import { LockKey, UserPlus } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError, api, clearAccessToken, setAccessToken } from '@/services/api'
@@ -83,20 +82,11 @@ export function AccessGate({ children }: { children: ReactNode }) {
           onSubmit={submit}
           className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-sm"
         >
-          <div className="mb-5 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-              {mode === 'login' ? (
-                <LockKey className="h-5 w-5" weight="bold" />
-              ) : (
-                <UserPlus className="h-5 w-5" weight="bold" />
-              )}
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold">Private CS Hub</h1>
-              <p className="text-sm text-muted-foreground">
-                {mode === 'login' ? 'Sign in to your account' : 'Create your account'}
-              </p>
-            </div>
+          <div className="mb-5">
+            <h1 className="text-lg font-semibold">CS Hub</h1>
+            <p className="text-sm text-muted-foreground">
+              {mode === 'login' ? 'Sign in to your account' : 'Create your account'}
+            </p>
           </div>
 
           <div className="space-y-3">
