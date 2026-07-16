@@ -9,6 +9,7 @@ import { mongoMode } from './db/mongo.js'
 import { countNotesAnywhere, warmMongoNotesIndexes, activeNotesStore } from './db/notes-store.js'
 import { resolveNotesStoreMode, usesMongoNotesBackup } from './db/notes-config.js'
 import { ensureUser, getDashboardStats, isDatabaseEnabled } from './db/repositories.js'
+import { bootstrapAuthSchema } from './db/bootstrap-schema.js'
 import articlesRouter from './routes/articles.js'
 import categoriesRouter from './routes/categories.js'
 import tagsRouter from './routes/tags.js'
@@ -26,9 +27,11 @@ import authRouter from './routes/auth.js'
 const app = express()
 
 if (isDatabaseEnabled()) {
-  ensureUser(MOCK_USER).catch((error) => {
-    console.error('Mock user bootstrap failed (non-fatal):', error)
-  })
+  bootstrapAuthSchema()
+    .then(() => ensureUser(MOCK_USER))
+    .catch((error) => {
+      console.error('Mock user bootstrap failed (non-fatal):', error)
+    })
 }
 
 warmMongoNotesIndexes()
