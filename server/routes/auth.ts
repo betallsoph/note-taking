@@ -24,8 +24,8 @@ function parseCredentials(body: unknown) {
   if (!USERNAME_RE.test(username)) {
     return { error: 'Username must be 3–32 characters (letters, numbers, underscore)' as const }
   }
-  if (password.length < 8) {
-    return { error: 'Password must be at least 8 characters' as const }
+  if (password.length < 6) {
+    return { error: 'Password must be at least 6 characters' as const }
   }
 
   return { username, password, name: name || username }
