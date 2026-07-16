@@ -1,7 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express'
 import cors from 'cors'
 import 'dotenv/config'
-import { MOCK_USER, isAccessTokenRequired, mockAuth, requireAccessToken } from './middleware/auth.js'
+import { MOCK_USER, authenticate, isAccessTokenRequired } from './middleware/auth.js'
+import { hasJwtSecret } from './lib/jwt.js'
 import { mockStore } from './mock-store.js'
 import { databaseMode } from './db/index.js'
 import { mongoMode } from './db/mongo.js'
@@ -20,6 +21,7 @@ import plannerRouter from './routes/planner.js'
 import accountsRouter from './routes/accounts.js'
 import simulationsRouter from './routes/simulations.js'
 import devAccountsRouter from './routes/dev-accounts.js'
+import authRouter from './routes/auth.js'
 
 const app = express()
 
@@ -33,7 +35,7 @@ warmMongoNotesIndexes()
 
 app.use(cors())
 app.use(express.json())
-app.use(mockAuth)
+app.use(authenticate)
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -44,10 +46,11 @@ app.get('/api/health', (_req, res) => {
     notesStoreMode: resolveNotesStoreMode(),
     mongoNotesBackup: usesMongoNotesBackup(),
     accessTokenRequired: isAccessTokenRequired(),
+    jwtConfigured: hasJwtSecret(),
   })
 })
 
-app.use(requireAccessToken)
+app.use('/api/auth', authRouter)
 app.get('/api/auth/me', (req, res) => {
   res.json(req.user)
 })

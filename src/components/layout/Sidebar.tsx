@@ -16,11 +16,13 @@ import {
   SidebarSimple,
   Moon,
   Sun,
+  SignOut,
   type Icon,
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
-import { useUIStore } from '@/store'
+import { useAuthStore, useUIStore } from '@/store'
 import { Button } from '@/components/ui/button'
+import { clearAccessToken } from '@/services/api'
 
 interface NavItem {
   to: string
@@ -64,11 +66,19 @@ const navGroups: NavGroup[] = [
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar, theme, setTheme } = useUIStore()
+  const user = useAuthStore((s) => s.user)
+  const clearUser = useAuthStore((s) => s.clearUser)
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
     document.documentElement.classList.toggle('dark', next === 'dark')
+  }
+
+  const logout = () => {
+    clearAccessToken()
+    clearUser()
+    window.location.reload()
   }
 
   return (
@@ -127,7 +137,12 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-sidebar-border p-2">
+      <div className="border-t border-sidebar-border p-2 space-y-1">
+        {!sidebarCollapsed && user?.username ? (
+          <p className="px-3 py-1 text-xs text-muted-foreground truncate" title={user.username}>
+            @{user.username}
+          </p>
+        ) : null}
         <Button
           variant="ghost"
           size={sidebarCollapsed ? 'icon' : 'default'}
@@ -136,6 +151,15 @@ export function Sidebar() {
         >
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           {!sidebarCollapsed && <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
+        </Button>
+        <Button
+          variant="ghost"
+          size={sidebarCollapsed ? 'icon' : 'default'}
+          onClick={logout}
+          className={cn('w-full', !sidebarCollapsed && 'justify-start gap-3')}
+        >
+          <SignOut className="h-4 w-4" />
+          {!sidebarCollapsed && <span>Sign out</span>}
         </Button>
       </div>
     </aside>

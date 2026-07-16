@@ -70,6 +70,8 @@ export const simulationTypeEnum = pgEnum('simulation_type', [
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
+  username: text('username').unique(),
+  passwordHash: text('password_hash'),
   name: text('name').notNull(),
   avatarUrl: text('avatar_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

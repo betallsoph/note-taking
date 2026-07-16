@@ -1,16 +1,22 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
-import { LockKey } from '@phosphor-icons/react'
+import { LockKey, UserPlus } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError, api, clearAccessToken, setAccessToken } from '@/services/api'
 import { useAuthStore, useUIStore } from '@/store'
 
+type AuthMode = 'login' | 'register'
+
 export function AccessGate({ children }: { children: ReactNode }) {
   const setUser = useAuthStore((s) => s.setUser)
   const theme = useUIStore((s) => s.theme)
   const [status, setStatus] = useState<'checking' | 'locked' | 'ready'>('checking')
-  const [token, setToken] = useState('')
+  const [mode, setMode] = useState<AuthMode>('login')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -29,25 +35,36 @@ export function AccessGate({ children }: { children: ReactNode }) {
           setStatus('locked')
           return
         }
-        setStatus('ready')
+        setStatus('locked')
       })
   }, [setUser])
 
-  async function unlock(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const trimmed = token.trim()
-    if (!trimmed) return
+    const trimmedUsername = username.trim()
+    if (!trimmedUsername || !password) return
 
     setError(null)
-    setAccessToken(trimmed)
+    setSubmitting(true)
 
     try {
-      const user = await api.auth.me()
-      setUser(user)
+      const payload =
+        mode === 'login'
+          ? await api.auth.login({ username: trimmedUsername, password })
+          : await api.auth.register({
+              username: trimmedUsername,
+              password,
+              name: displayName.trim() || undefined,
+            })
+
+      setAccessToken(payload.token)
+      setUser(payload.user)
       setStatus('ready')
     } catch (err) {
       clearAccessToken()
-      setError(err instanceof Error ? err.message : 'Could not unlock workspace')
+      setError(err instanceof Error ? err.message : 'Could not sign in')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -63,29 +80,69 @@ export function AccessGate({ children }: { children: ReactNode }) {
     return (
       <main className="grid min-h-[100dvh] place-items-center bg-background px-6">
         <form
-          onSubmit={unlock}
+          onSubmit={submit}
           className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-sm"
         >
           <div className="mb-5 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <LockKey className="h-5 w-5" weight="bold" />
+              {mode === 'login' ? (
+                <LockKey className="h-5 w-5" weight="bold" />
+              ) : (
+                <UserPlus className="h-5 w-5" weight="bold" />
+              )}
             </div>
             <div>
               <h1 className="text-lg font-semibold">Private CS Hub</h1>
-              <p className="text-sm text-muted-foreground">Enter your access token</p>
+              <p className="text-sm text-muted-foreground">
+                {mode === 'login' ? 'Sign in to your account' : 'Create your account'}
+              </p>
             </div>
           </div>
-          <Input
-            autoFocus
-            type="password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            placeholder="Access token"
-          />
+
+          <div className="space-y-3">
+            <Input
+              autoFocus
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="Username"
+            />
+            {mode === 'register' ? (
+              <Input
+                autoComplete="name"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder="Display name (optional)"
+              />
+            ) : null}
+            <Input
+              type="password"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Password"
+            />
+          </div>
+
           {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
-          <Button className="mt-4 w-full" type="submit">
-            Unlock
+
+          <Button className="mt-4 w-full" type="submit" disabled={submitting}>
+            {submitting ? 'Please wait...' : mode === 'login' ? 'Sign in' : 'Create account'}
           </Button>
+
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
+            <button
+              type="button"
+              className="font-medium text-primary hover:underline"
+              onClick={() => {
+                setMode(mode === 'login' ? 'register' : 'login')
+                setError(null)
+              }}
+            >
+              {mode === 'login' ? 'Create one' : 'Sign in'}
+            </button>
+          </p>
         </form>
       </main>
     )

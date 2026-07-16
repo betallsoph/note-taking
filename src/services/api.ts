@@ -47,6 +47,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   auth: {
     me: () => request<import('@/types').User>('/auth/me'),
+    login: (data: { username: string; password: string }) =>
+      request<{ token: string; user: import('@/types').User }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    register: (data: { username: string; password: string; name?: string }) =>
+      request<{ token: string; user: import('@/types').User }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
   dashboard: {
     stats: () => request<import('@/types').DashboardStats>('/dashboard'),
