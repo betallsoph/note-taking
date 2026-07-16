@@ -1,11 +1,12 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
-import { and, desc, eq, inArray, lte } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, lte } from 'drizzle-orm'
 import { db, type Database } from './index.js'
 import { getPgError, isMissingRelation } from './pg-error.js'
 import { resolveNotesStoreMode } from './notes-config.js'
 import { normalizeNoteTags, noteMatchesArchivedFilter, type NoteListFilters } from './note-tags.js'
 import * as schema from './schema.js'
-import { MOCK_USER, type AuthUser } from '../middleware/auth.js'
+import { MOCK_USER, type AuthUser } from '../auth-constants.js'
+import { hashPassword, verifyPassword } from '../lib/password.js'
 import {
   slugify,
   type Article,
@@ -460,6 +461,93 @@ export async function ensureUser(user: AuthUser): Promise<boolean> {
     }
     return false
   }
+}
+
+function toAuthUser(row: typeof schema.users.$inferSelect): AuthUser {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    username: row.username,
+  }
+}
+
+export async function getUserById(userId: string): Promise<AuthUser | null> {
+  if (!db) return null
+  const [row] = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1)
+  return row ? toAuthUser(row) : null
+}
+
+export async function getUserByUsername(username: string): Promise<typeof schema.users.$inferSelect | null> {
+  if (!db) return null
+  const [row] = await db.select().from(schema.users).where(eq(schema.users.username, username)).limit(1)
+  return row ?? null
+}
+
+async function countCredentialUsers() {
+  if (!db) return 0
+  const rows = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(isNotNull(schema.users.passwordHash))
+  return rows.length
+}
+
+export async function registerUser(input: {
+  username: string
+  password: string
+  name: string
+}): Promise<AuthUser> {
+  const database = requireDb()
+
+  const existing = await getUserByUsername(input.username)
+  if (existing) throw new Error('Username already taken')
+
+  const passwordHash = await hashPassword(input.password)
+  const isFirstUser = (await countCredentialUsers()) === 0
+  const userId = isFirstUser ? MOCK_USER.id : crypto.randomUUID()
+  const email = isFirstUser ? MOCK_USER.email : `${input.username}@cshub.local`
+
+  if (isFirstUser) {
+    await database
+      .insert(schema.users)
+      .values({
+        id: userId,
+        email,
+        name: input.name,
+        username: input.username,
+        passwordHash,
+      })
+      .onConflictDoUpdate({
+        target: schema.users.id,
+        set: {
+          name: input.name,
+          username: input.username,
+          passwordHash,
+          updatedAt: new Date(),
+        },
+      })
+  } else {
+    await database.insert(schema.users).values({
+      id: userId,
+      email,
+      name: input.name,
+      username: input.username,
+      passwordHash,
+    })
+  }
+
+  const user = await getUserById(userId)
+  if (!user?.username) throw new Error('Failed to create user')
+  return user
+}
+
+export async function loginUser(username: string, password: string): Promise<AuthUser | null> {
+  const row = await getUserByUsername(username)
+  if (!row?.passwordHash) return null
+  const valid = await verifyPassword(password, row.passwordHash)
+  if (!valid) return null
+  return toAuthUser(row)
 }
 
 export async function getDashboardStats(userId: string): Promise<DashboardStats> {

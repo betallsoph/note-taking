@@ -1,5 +1,6 @@
-import type { AuthUser } from './middleware/auth.js'
-import { MOCK_USER } from './middleware/auth.js'
+import type { AuthUser } from './auth-constants.js'
+import { MOCK_USER } from './auth-constants.js'
+import { hashPassword, verifyPassword } from './lib/password.js'
 
 export type ArticleStatus = 'not_started' | 'learning' | 'completed' | 'need_review'
 export type Difficulty = 'easy' | 'medium' | 'hard'
@@ -265,6 +266,41 @@ class MockStore {
   personalAccounts: PersonalAccount[] = []
   devProjects: DevProject[] = []
   devAccounts: DevAccount[] = []
+  private authUsers: Array<AuthUser & { passwordHash: string }> = []
+
+  async registerUser(input: { username: string; password: string; name: string }): Promise<AuthUser> {
+    if (this.authUsers.some((user) => user.username === input.username)) {
+      throw new Error('Username already taken')
+    }
+
+    const isFirstUser = this.authUsers.length === 0
+    const id = isFirstUser ? MOCK_USER.id : crypto.randomUUID()
+    const email = isFirstUser ? MOCK_USER.email : `${input.username}@cshub.local`
+    const passwordHash = await hashPassword(input.password)
+    const user: AuthUser & { passwordHash: string } = {
+      id,
+      email,
+      name: input.name,
+      username: input.username,
+      passwordHash,
+    }
+    this.authUsers.push(user)
+    return { id: user.id, email: user.email, name: user.name, username: user.username }
+  }
+
+  async loginUser(username: string, password: string): Promise<AuthUser | null> {
+    const row = this.authUsers.find((user) => user.username === username)
+    if (!row) return null
+    const valid = await verifyPassword(password, row.passwordHash)
+    if (!valid) return null
+    return { id: row.id, email: row.email, name: row.name, username: row.username }
+  }
+
+  getAuthUserById(userId: string): AuthUser | null {
+    const row = this.authUsers.find((user) => user.id === userId)
+    if (!row) return null
+    return { id: row.id, email: row.email, name: row.name, username: row.username }
+  }
 
   seed(user: AuthUser) {
     if (this.categories.length > 0) return

@@ -1,22 +1,14 @@
 import { timingSafeEqual } from 'node:crypto'
 import type { Request, Response, NextFunction } from 'express'
-
-export interface AuthUser {
-  id: string
-  email: string
-  name: string
-}
+import { verifyAccessToken } from '../lib/jwt.js'
+import { getUserById } from '../db/repositories.js'
+import { isDatabaseEnabled } from '../db/index.js'
+import { MOCK_USER, type AuthUser } from '../auth-constants.js'
 
 declare module 'express-serve-static-core' {
   interface Request {
     user: AuthUser
   }
-}
-
-const MOCK_USER: AuthUser = {
-  id: '00000000-0000-4000-8000-000000000001',
-  email: 'learner@example.com',
-  name: 'CS Learner',
 }
 
 function accessToken() {
@@ -39,19 +31,45 @@ export function isAccessTokenRequired() {
   return Boolean(accessToken())
 }
 
-export function requireAccessToken(req: Request, res: Response, next: NextFunction) {
-  const expected = accessToken()
-  if (!expected) return next()
+function isPublicPath(req: Request) {
+  if (req.path === '/api/health') return true
+  if (req.method !== 'POST') return false
+  return req.path === '/api/auth/register' || req.path === '/api/auth/login'
+}
+
+async function resolveUserFromJwt(token: string): Promise<AuthUser | null> {
+  try {
+    const { userId } = await verifyAccessToken(token)
+    if (isDatabaseEnabled()) {
+      const user = await getUserById(userId)
+      return user
+    }
+    const { mockStore } = await import('../mock-store.js')
+    return mockStore.getAuthUserById(userId)
+  } catch {
+    return null
+  }
+}
+
+export async function authenticate(req: Request, res: Response, next: NextFunction) {
+  if (isPublicPath(req)) return next()
 
   const provided = tokenFromRequest(req)
-  if (provided && tokenMatches(provided, expected)) return next()
+  if (provided) {
+    const jwtUser = await resolveUserFromJwt(provided)
+    if (jwtUser) {
+      req.user = jwtUser
+      return next()
+    }
 
-  return res.status(401).json({ error: 'Access token required' })
+    const legacy = accessToken()
+    if (legacy && tokenMatches(provided, legacy)) {
+      req.user = MOCK_USER
+      return next()
+    }
+  }
+
+  return res.status(401).json({ error: 'Authentication required' })
 }
 
-export function mockAuth(req: Request, _res: Response, next: NextFunction) {
-  req.user = MOCK_USER
-  next()
-}
-
-export { MOCK_USER }
+export { MOCK_USER, type AuthUser }
