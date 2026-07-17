@@ -12,6 +12,7 @@ import {
   handleEditorImagePaste,
   handleEditorMarkdownDrop,
   handleEditorMarkdownPaste,
+  insertDevVaultLink,
 } from '@/utils/editorHelpers'
 import { getEditorMarkdown, preprocessMarkdownForEditor } from '@/utils/markdown'
 import { useEditorAutosave } from '@/hooks/useEditorAutosave'
@@ -21,6 +22,8 @@ import { EditorBubbleMenu } from './EditorBubbleMenu'
 import { EditorFloatingMenu } from './EditorFloatingMenu'
 import { EditorSearchBar } from './EditorSearchBar'
 import { cn } from '@/lib/utils'
+
+export { insertDevVaultLink }
 
 function AutosaveIndicator({ status }: { status: AutosaveStatus }) {
   if (status === 'idle') return null
