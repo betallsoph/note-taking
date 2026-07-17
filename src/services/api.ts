@@ -227,6 +227,11 @@ export const api = {
       }),
     deleteProject: (id: string) =>
       request<void>(`/dev-accounts/projects/${id}`, { method: 'DELETE' }),
+    getAccount: (accountId: string) =>
+      request<{
+        account: import('@/types').DevAccount
+        project: Pick<import('@/types').DevProject, 'id' | 'name' | 'slug'>
+      }>(`/dev-accounts/accounts/${accountId}`),
     createAccount: (projectId: string, data: Partial<import('@/types').DevAccount>) =>
       request<import('@/types').DevAccount>(`/dev-accounts/projects/${projectId}/accounts`, {
         method: 'POST',

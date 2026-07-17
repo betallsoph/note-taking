@@ -13,6 +13,7 @@ import {
   type ArticleStatus,
   type Category,
   type DashboardStats,
+  mockStore,
   type DevAccount,
   type DevCredentialKind,
   type DevProject,
@@ -1323,6 +1324,66 @@ export async function deleteDevAccount(userId: string, projectId: string, accoun
     .where(and(eq(schema.devAccounts.id, accountId), eq(schema.devAccounts.projectId, projectId)))
     .returning({ id: schema.devAccounts.id })
   return Boolean(row)
+}
+
+export async function getDevAccountById(
+  userId: string,
+  accountId: string,
+): Promise<{
+  account: DevAccount
+  projectId: string
+  projectName: string
+  projectSlug: string
+} | null> {
+  if (db) {
+    const database = requireDb()
+    const [row] = await database
+      .select({
+        account: schema.devAccounts,
+        project: schema.devProjects,
+      })
+      .from(schema.devAccounts)
+      .innerJoin(schema.devProjects, eq(schema.devAccounts.projectId, schema.devProjects.id))
+      .where(and(eq(schema.devAccounts.id, accountId), eq(schema.devProjects.userId, userId)))
+      .limit(1)
+    if (!row) return null
+
+    const [accountRow] = await migrateLegacyEnvVarAccounts(database, [row.account])
+    const project = serializeDevProject(row.project)
+    return {
+      account: serializeDevAccount(accountRow),
+      projectId: project.id,
+      projectName: project.name,
+      projectSlug: project.slug,
+    }
+  }
+
+  const account = mockStore.devAccounts.find((row) => row.id === accountId)
+  if (!account) return null
+
+  if (account.kind === 'env_var') {
+    const key = account.username.trim()
+    const value = account.password
+    const looksLikeBlock = value.includes('\n') || (value.includes('=') && !key)
+    account.kind = 'env_file'
+    account.username = '.env'
+    account.password = looksLikeBlock ? value : key ? `${key}=${value}` : value
+    account.provider = null
+    account.url = null
+    if (!account.name.trim()) account.name = key || 'Env file'
+  }
+
+  const project = mockStore.devProjects.find(
+    (row) => row.id === account.projectId && row.userId === userId,
+  )
+  if (!project) return null
+
+  return {
+    account,
+    projectId: project.id,
+    projectName: project.name,
+    projectSlug: project.slug,
+  }
 }
 
 export async function listPersonalAccounts(
