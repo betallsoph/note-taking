@@ -26,6 +26,8 @@ import { InterviewTipBlock } from '@/extensions/InterviewTipBlock'
 import { WarningBlock } from '@/extensions/WarningBlock'
 import { InfoBlock } from '@/extensions/InfoBlock'
 import { SlashCommand } from '@/extensions/SlashCommand'
+import { DevVaultLink } from '@/extensions/DevVaultLink'
+import type { DevVaultLinkAttrs } from '@/extensions/DevVaultLink'
 import { SearchHighlight } from '@/extensions/SearchHighlight'
 import { preprocessMarkdownForEditor } from '@/utils/markdown'
 import { cn } from '@/lib/utils'
@@ -114,6 +116,7 @@ export function createEditorExtensions(options: {
     InterviewTipBlock,
     WarningBlock,
     InfoBlock,
+    DevVaultLink,
     Markdown.configure({
       html: true,
       tightLists: true,
@@ -146,6 +149,10 @@ export async function resolveImageUrl(
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+}
+
+export function insertDevVaultLink(editor: Editor, attrs: DevVaultLinkAttrs) {
+  editor.chain().focus().insertDevVaultLink(attrs).run()
 }
 
 export function insertImageFromFile(

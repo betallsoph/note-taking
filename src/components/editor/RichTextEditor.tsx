@@ -12,15 +12,23 @@ import {
   handleEditorImagePaste,
   handleEditorMarkdownDrop,
   handleEditorMarkdownPaste,
+  insertDevVaultLink,
 } from '@/utils/editorHelpers'
 import { getEditorMarkdown, preprocessMarkdownForEditor } from '@/utils/markdown'
 import { useEditorAutosave } from '@/hooks/useEditorAutosave'
+import { DevVaultEntryModal } from '@/features/dev-accounts/DevVaultEntryModal'
+import {
+  InsertDevVaultLinkDialog,
+  type DevVaultLinkSelection,
+} from '@/features/notes/InsertDevVaultLinkDialog'
 import { Toolbar } from './Toolbar'
 import { SlashCommandMenu } from './SlashCommandMenu'
 import { EditorBubbleMenu } from './EditorBubbleMenu'
 import { EditorFloatingMenu } from './EditorFloatingMenu'
 import { EditorSearchBar } from './EditorSearchBar'
 import { cn } from '@/lib/utils'
+
+export { insertDevVaultLink }
 
 function AutosaveIndicator({ status }: { status: AutosaveStatus }) {
   if (status === 'idle') return null
@@ -62,6 +70,11 @@ export function RichTextEditor({
   const [searchOpen, setSearchOpen] = useState(false)
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashProps, setSlashProps] = useState<SuggestionProps<SlashCommandItem> | null>(null)
+  const [insertVaultOpen, setInsertVaultOpen] = useState(false)
+  const [vaultPreview, setVaultPreview] = useState<{
+    projectId: string
+    accountId: string
+  } | null>(null)
   const lastExternalContent = useRef(content)
 
   const autosaveStatus = useEditorAutosave(draft, onChange, autoSaveDelay)
@@ -107,19 +120,28 @@ export function RichTextEditor({
     },
   })
 
+  const handleVaultLinkInsert = useCallback(
+    (selection: DevVaultLinkSelection) => {
+      if (!editor) return
+      insertDevVaultLink(editor, selection)
+    },
+    [editor],
+  )
+
+  const openInsertVaultDialog = useCallback(() => {
+    setInsertVaultOpen(true)
+  }, [])
+
   useEffect(() => {
     if (!editor) return
     editor.setEditable(editable)
   }, [editor, editable])
 
-  // Only apply external content updates (e.g. refetch while unfocused).
-  // Never reset from draft changes — that wiped keystrokes (content !== draft while typing).
   useEffect(() => {
     if (!editor) return
     if (content === lastExternalContent.current) return
     lastExternalContent.current = content
 
-    // Don't clobber in-progress typing when autosave writes the query cache.
     if (editor.isFocused) return
 
     const current = getEditorMarkdown(editor)
@@ -146,6 +168,30 @@ export function RichTextEditor({
     }
   }, [])
 
+  useEffect(() => {
+    const onInsertRequest = () => {
+      setInsertVaultOpen(true)
+    }
+    const onLinkClick = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        projectId: string
+        accountId: string
+      }>).detail
+      if (!detail?.projectId || !detail?.accountId) return
+      setVaultPreview({
+        projectId: detail.projectId,
+        accountId: detail.accountId,
+      })
+    }
+
+    window.addEventListener('dev-vault-insert-request', onInsertRequest)
+    window.addEventListener('dev-vault-link-click', onLinkClick)
+    return () => {
+      window.removeEventListener('dev-vault-insert-request', onInsertRequest)
+      window.removeEventListener('dev-vault-link-click', onLinkClick)
+    }
+  }, [])
+
   const toggleSearch = useCallback(() => {
     setSearchOpen((v) => {
       if (v && editor) editor.commands.clearSearch()
@@ -164,27 +210,50 @@ export function RichTextEditor({
   }
 
   return (
-    <div className={cn(editorWrapperClass, !editable && 'editor-readonly', className)}>
-      {editable && showToolbar && (
-        <Toolbar editor={editor} onSearchToggle={showSearch ? toggleSearch : undefined} />
-      )}
-      {editable && showSearch && (
-        <EditorSearchBar editor={editor} open={searchOpen} onClose={() => setSearchOpen(false)} />
-      )}
-      <div className="relative">
-        {editable && <EditorBubbleMenu editor={editor} onAddFlashcard={onAddFlashcard} />}
-        {editable && <EditorFloatingMenu editor={editor} />}
-        <EditorContent editor={editor} />
-        {editable && slashOpen && <SlashCommandMenu open={slashOpen} props={slashProps} />}
-      </div>
-      {editable && (
-        <div className="flex items-center justify-between border-t px-3 py-1.5">
-          <span className="text-xs text-muted-foreground">
-            Type <kbd className="rounded border px-1 font-mono">/</kbd> for commands
-          </span>
-          <AutosaveIndicator status={autosaveStatus} />
+    <>
+      <div className={cn(editorWrapperClass, !editable && 'editor-readonly', className)}>
+        {editable && showToolbar && (
+          <Toolbar
+            editor={editor}
+            onSearchToggle={showSearch ? toggleSearch : undefined}
+            onInsertVaultLink={openInsertVaultDialog}
+          />
+        )}
+        {editable && showSearch && (
+          <EditorSearchBar editor={editor} open={searchOpen} onClose={() => setSearchOpen(false)} />
+        )}
+        <div className="relative">
+          {editable && <EditorBubbleMenu editor={editor} onAddFlashcard={onAddFlashcard} />}
+          {editable && <EditorFloatingMenu editor={editor} />}
+          <EditorContent editor={editor} />
+          {editable && slashOpen && <SlashCommandMenu open={slashOpen} props={slashProps} />}
         </div>
+        {editable && (
+          <div className="flex items-center justify-between border-t px-3 py-1.5">
+            <span className="text-xs text-muted-foreground">
+              Type <kbd className="rounded border px-1 font-mono">/</kbd> for commands
+            </span>
+            <AutosaveIndicator status={autosaveStatus} />
+          </div>
+        )}
+      </div>
+
+      {editable && (
+        <InsertDevVaultLinkDialog
+          open={insertVaultOpen}
+          onOpenChange={setInsertVaultOpen}
+          onSelect={handleVaultLinkInsert}
+        />
       )}
-    </div>
+
+      <DevVaultEntryModal
+        open={Boolean(vaultPreview)}
+        onOpenChange={(open) => {
+          if (!open) setVaultPreview(null)
+        }}
+        projectId={vaultPreview?.projectId}
+        accountId={vaultPreview?.accountId}
+      />
+    </>
   )
 }

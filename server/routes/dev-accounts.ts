@@ -5,6 +5,7 @@ import {
   createDevProject,
   deleteDevAccount,
   deleteDevProject,
+  getDevAccountById,
   isDatabaseEnabled,
   listDevProjects,
   updateDevAccount,
@@ -12,6 +13,19 @@ import {
 } from '../db/repositories.js'
 
 const router = Router()
+
+router.get('/accounts/:accountId', async (req, res) => {
+  const result = await getDevAccountById(req.user.id, req.params.accountId)
+  if (!result) return res.status(404).json({ error: 'Not found' })
+  return res.json({
+    account: result.account,
+    project: {
+      id: result.projectId,
+      name: result.projectName,
+      slug: result.projectSlug,
+    },
+  })
+})
 
 router.get('/projects', async (req, res) => {
   if (isDatabaseEnabled()) {

@@ -110,6 +110,33 @@
   text-underline-offset: 2px;
 }
 
+.editor-content .dev-vault-link {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 0.375rem;
+  border: 1px solid color-mix(in oklch, var(--primary) 25%, transparent);
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  padding: 0.125rem 0.375rem;
+  vertical-align: baseline;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  color: var(--primary);
+  text-decoration: none;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.editor-readonly .editor-content .dev-vault-link {
+  cursor: pointer;
+}
+
+.editor-readonly .editor-content .dev-vault-link:hover {
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+}
+
 .editor-content a.editor-link:hover {
   opacity: 0.85;
 }

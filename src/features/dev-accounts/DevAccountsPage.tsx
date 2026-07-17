@@ -1,13 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
   PencilSimple,
   Trash,
-  Eye,
-  EyeSlash,
-  Copy,
-  Check,
   FolderSimple,
   Key,
   FileText,
@@ -21,6 +18,17 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { DevVaultEntryModal } from './DevVaultEntryModal'
+import {
+  credentialLabel,
+  credentialTypes,
+  defaultEnvFileName,
+  entryCountLabel,
+  environmentLabel,
+  environments,
+  isEnvFileKind,
+  usesMultilineSecret,
+} from './devVaultUtils'
 import type { DevAccount, DevCredentialKind, DevProject } from '@/types'
 
 type ProjectForm = { name: string; description: string }
@@ -48,59 +56,10 @@ const emptyAccount: AccountForm = {
   description: '',
 }
 
-const credentialTypes: Array<{ value: DevCredentialKind; label: string }> = [
-  { value: 'api_key', label: 'API Key' },
-  { value: 'database', label: 'Database User' },
-  { value: 'connection_string', label: 'Connection String' },
-  { value: 'login', label: 'Login' },
-  { value: 'oauth_client', label: 'OAuth Client' },
-  { value: 'webhook_secret', label: 'Webhook Secret' },
-  { value: 'ssh_key', label: 'SSH Key' },
-]
-
-const environments = ['dev', 'local', 'staging', 'qa', 'prod', 'sandbox'] as const
-
-function isEnvFileKind(kind?: string) {
-  return kind === 'env_file' || kind === 'env_var'
-}
-
-function usesMultilineSecret(kind?: string) {
-  return kind === 'ssh_key' || kind === 'connection_string' || isEnvFileKind(kind)
-}
-
-function maskEnvContent(content: string) {
-  return content
-    .split('\n')
-    .map((line) => {
-      const trimmed = line.trim()
-      if (!trimmed) return ''
-      if (trimmed.startsWith('#')) return line
-      const eq = line.indexOf('=')
-      if (eq === -1) return '••••••••••••'
-      return `${line.slice(0, eq + 1)}••••••••••••`
-    })
-    .join('\n')
-}
-
-function credentialLabel(kind?: string) {
-  if (isEnvFileKind(kind)) return 'Env file (.env)'
-  return credentialTypes.find((item) => item.value === kind)?.label ?? 'Entry'
-}
-
-function environmentLabel(value?: string) {
-  return value ? value.toUpperCase() : 'DEV'
-}
-
-function defaultEnvFileName(environment: string) {
-  return environment === 'prod' ? 'Production .env' : `${environmentLabel(environment)} .env`
-}
-
-function entryCountLabel(count: number) {
-  return `${count} ${count === 1 ? 'entry' : 'entries'}`
-}
-
 export function DevAccountsPage() {
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const deepLinkHandled = useRef(false)
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [viewingAccount, setViewingAccount] = useState<DevAccount | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -110,8 +69,6 @@ export function DevAccountsPage() {
   const [projectChoice, setProjectChoice] = useState<string>(NEW_PROJECT_VALUE)
   const [projectForm, setProjectForm] = useState<ProjectForm>(emptyProject)
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccount)
-  const [revealInModal, setRevealInModal] = useState(false)
-  const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const { data: projects, isLoading } = useQuery({
@@ -180,10 +137,23 @@ export function DevAccountsPage() {
   const envFileForm = isEnvFileKind(accountForm.kind)
 
   useEffect(() => {
-    if (!copiedKey) return
-    const timer = window.setTimeout(() => setCopiedKey(null), 1200)
-    return () => window.clearTimeout(timer)
-  }, [copiedKey])
+    if (deepLinkHandled.current || isLoading || !projects) return
+
+    const projectParam = searchParams.get('project')
+    const accountParam = searchParams.get('account')
+    if (!projectParam) return
+
+    const project = projects.find((row) => row.id === projectParam)
+    if (!project) return
+
+    deepLinkHandled.current = true
+    setSelectedProjectId(projectParam)
+
+    if (accountParam) {
+      const account = project.accounts?.find((row) => row.id === accountParam)
+      if (account) setViewingAccount(account)
+    }
+  }, [isLoading, projects, searchParams])
 
   useEffect(() => {
     if (selectedProjectId && projects && !selectedProject && !isLoading) {
@@ -191,23 +161,12 @@ export function DevAccountsPage() {
     }
   }, [selectedProjectId, projects, selectedProject, isLoading])
 
-  async function copyText(value: string, key?: string) {
-    try {
-      await navigator.clipboard.writeText(value)
-      if (key) setCopiedKey(key)
-    } catch {
-      // Clipboard may be unavailable in some environments; ignore quietly.
-    }
-  }
-
   function closeViewDialog() {
     setViewingAccount(null)
-    setRevealInModal(false)
   }
 
   function openViewAccount(account: DevAccount) {
     setViewingAccount(account)
-    setRevealInModal(false)
   }
 
   function closeFormDialog() {
@@ -365,7 +324,6 @@ export function DevAccountsPage() {
   const formBusy = submitting || updateAccountMutation.isPending
   const viewingProject = Boolean(selectedProject)
   const modalAccount = viewingAccountLive ?? viewingAccount
-  const modalEnvFile = isEnvFileKind(modalAccount?.kind)
 
   useEffect(() => {
     if (viewingAccount && selectedProject && !viewingAccountLive) {
@@ -584,188 +542,20 @@ export function DevAccountsPage() {
         </div>
       )}
 
-      <Dialog
+      <DevVaultEntryModal
         open={Boolean(modalAccount)}
         onOpenChange={(open) => {
           if (!open) closeViewDialog()
         }}
-      >
-        <DialogContent className="max-w-2xl">
-          {modalAccount && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex flex-wrap items-center gap-2 pr-8">
-                  <span>{modalAccount.name}</span>
-                  <Badge variant="secondary">{credentialLabel(modalAccount.kind)}</Badge>
-                  <Badge variant="outline">{environmentLabel(modalAccount.environment)}</Badge>
-                  {modalAccount.provider && (
-                    <Badge variant="outline">{modalAccount.provider}</Badge>
-                  )}
-                </DialogTitle>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                {modalEnvFile ? (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs uppercase tracking-wide text-muted-foreground opacity-70">
-                        Contents
-                      </span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7"
-                        onClick={() => copyText(modalAccount.password, `copy-all:${modalAccount.id}`)}
-                      >
-                        {copiedKey === `copy-all:${modalAccount.id}` ? (
-                          <>
-                            <Check className="h-3.5 w-3.5" /> Copied
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-3.5 w-3.5" /> Copy all
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => setRevealInModal((prev) => !prev)}
-                        title={revealInModal ? 'Hide .env' : 'Show .env'}
-                      >
-                        {revealInModal ? (
-                          <EyeSlash className="h-3.5 w-3.5" />
-                        ) : (
-                          <Eye className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                    <pre className="max-h-[50vh] overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground">
-                      {revealInModal
-                        ? modalAccount.password
-                        : maskEnvContent(modalAccount.password)}
-                    </pre>
-                  </div>
-                ) : (
-                  <div className="space-y-3 text-sm">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="shrink-0 text-xs uppercase tracking-wide text-muted-foreground opacity-70">
-                        Identifier
-                      </span>
-                      <span className="truncate font-mono">{modalAccount.username}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => copyText(modalAccount.username, `user:${modalAccount.id}`)}
-                      >
-                        {copiedKey === `user:${modalAccount.id}` ? (
-                          <Check className="h-3.5 w-3.5" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="shrink-0 text-xs uppercase tracking-wide text-muted-foreground opacity-70">
-                        Value
-                      </span>
-                      <span className="min-w-0 flex-1 break-all font-mono">
-                        {revealInModal ? modalAccount.password : '••••••••••••'}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => setRevealInModal((prev) => !prev)}
-                      >
-                        {revealInModal ? (
-                          <EyeSlash className="h-3.5 w-3.5" />
-                        ) : (
-                          <Eye className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => copyText(modalAccount.password, `pass:${modalAccount.id}`)}
-                      >
-                        {copiedKey === `pass:${modalAccount.id}` ? (
-                          <Check className="h-3.5 w-3.5" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                    {modalAccount.url && (
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="shrink-0 text-xs uppercase tracking-wide text-muted-foreground opacity-70">
-                          URL
-                        </span>
-                        <span className="truncate font-mono">{modalAccount.url}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => copyText(modalAccount.url ?? '', `url:${modalAccount.id}`)}
-                        >
-                          {copiedKey === `url:${modalAccount.id}` ? (
-                            <Check className="h-3.5 w-3.5" />
-                          ) : (
-                            <Copy className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {modalAccount.description && (
-                  <p className="text-sm text-muted-foreground">{modalAccount.description}</p>
-                )}
-
-                {selectedProject && (
-                  <div className="flex flex-wrap gap-2 border-t pt-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        const account = modalAccount
-                        closeViewDialog()
-                        openEditAccount(selectedProject.id, account)
-                      }}
-                    >
-                      <PencilSimple className="h-4 w-4" /> Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        if (!confirm(`Delete entry "${modalAccount.name}"?`)) return
-                        deleteAccountMutation.mutate({
-                          projectId: selectedProject.id,
-                          accountId: modalAccount.id,
-                        })
-                        closeViewDialog()
-                      }}
-                    >
-                      <Trash className="h-4 w-4" /> Delete
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+        account={modalAccount}
+        projectId={selectedProject?.id ?? null}
+        accountId={modalAccount?.id ?? null}
+        onEdit={(projectId, account) => openEditAccount(projectId, account)}
+        onDelete={(projectId, accountId) => {
+          deleteAccountMutation.mutate({ projectId, accountId })
+          closeViewDialog()
+        }}
+      />
 
       <Dialog
         open={formOpen}

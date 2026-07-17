@@ -32,9 +32,49 @@ export function markdownToContent(markdown: string): { markdown: string } {
 const CALLOUT_RE =
   /^::: ([\w-]+)\n([\s\S]*?)\n:::\s*$/gm
 
+/** Inline Dev Vault link: [[vault:PROJECT_ID/ACCOUNT_ID|Label]] */
+export const DEV_VAULT_LINK_MARKDOWN_RE =
+  /\[\[vault:([^/\]]+)\/([^|\]]+)(?:\|([^\]]+))?\]\]/g
+
+export interface DevVaultLinkMarkdown {
+  projectId: string
+  accountId: string
+  label: string
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/** Serialize a Dev Vault link node to markdown. */
+export function serializeDevVaultLink({
+  projectId,
+  accountId,
+  label,
+}: DevVaultLinkMarkdown): string {
+  const suffix = label ? `|${label}` : ''
+  return `[[vault:${projectId}/${accountId}${suffix}]]`
+}
+
+/** Convert Dev Vault wiki links to HTML spans for TipTap import. */
+export function devVaultLinksToHtml(markdown: string): string {
+  return markdown.replace(
+    DEV_VAULT_LINK_MARKDOWN_RE,
+    (_match, projectId: string, accountId: string, label?: string) => {
+      const displayLabel = label ?? ''
+      return `<span data-dev-vault-link data-project-id="${escapeHtmlAttribute(projectId)}" data-account-id="${escapeHtmlAttribute(accountId)}" data-label="${escapeHtmlAttribute(displayLabel)}" class="dev-vault-link"></span>`
+    },
+  )
+}
+
 /** Convert custom callout fences to HTML for TipTap import (storage stays markdown). */
 export function preprocessMarkdownForEditor(markdown: string): string {
-  return markdown.replace(CALLOUT_RE, (_match, tag: string, body: string) => {
+  const withVaultLinks = devVaultLinksToHtml(markdown)
+  return withVaultLinks.replace(CALLOUT_RE, (_match, tag: string, body: string) => {
     const lines = body.trim().split('\n')
     if (tag === 'complexity') {
       const time = lines.find((l) => l.startsWith('time:'))?.slice(5).trim() ?? 'O(n)'
