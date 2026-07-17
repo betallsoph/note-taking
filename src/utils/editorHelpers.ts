@@ -26,9 +26,9 @@ import { InterviewTipBlock } from '@/extensions/InterviewTipBlock'
 import { WarningBlock } from '@/extensions/WarningBlock'
 import { InfoBlock } from '@/extensions/InfoBlock'
 import { SlashCommand } from '@/extensions/SlashCommand'
-import { SearchHighlight } from '@/extensions/SearchHighlight'
 import { DevVaultLink } from '@/extensions/DevVaultLink'
-import type { DevVaultLinkAttributes } from '@/extensions/DevVaultLink'
+import type { DevVaultLinkAttrs } from '@/extensions/DevVaultLink'
+import { SearchHighlight } from '@/extensions/SearchHighlight'
 import { preprocessMarkdownForEditor } from '@/utils/markdown'
 import { cn } from '@/lib/utils'
 
@@ -151,7 +151,7 @@ export async function resolveImageUrl(
   })
 }
 
-export function insertDevVaultLink(editor: Editor, attrs: DevVaultLinkAttributes) {
+export function insertDevVaultLink(editor: Editor, attrs: DevVaultLinkAttrs) {
   editor.chain().focus().insertDevVaultLink(attrs).run()
 }
 

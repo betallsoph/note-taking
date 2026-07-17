@@ -142,6 +142,18 @@ export const slashCommandItems: SlashCommandItem[] = [
       editor.chain().focus().deleteRange(range).insertContent('$O(n \\log n)$').run()
     },
   },
+  {
+    title: 'Dev Vault link',
+    description: 'Link to a credential in Dev Vault',
+    keywords: ['vault', 'credential', 'secret', 'api', 'dev'],
+    icon: 'Key',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run()
+      window.dispatchEvent(
+        new CustomEvent('dev-vault-insert-request', { detail: { editor } }),
+      )
+    },
+  },
 ]
 
 declare module '@tiptap/core' {

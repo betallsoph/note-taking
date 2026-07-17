@@ -13,6 +13,7 @@ import {
   Table,
   Image,
   Link as LinkIcon,
+  Key,
   MagnifyingGlass,
 } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
@@ -22,6 +23,7 @@ import { EDITOR_LANGUAGES } from '@/utils/editorHelpers'
 interface ToolbarProps {
   editor: Editor
   onSearchToggle?: () => void
+  onInsertVaultLink?: () => void
 }
 
 function ToolbarButton({
@@ -51,7 +53,7 @@ function ToolbarButton({
   )
 }
 
-export function Toolbar({ editor, onSearchToggle }: ToolbarProps) {
+export function Toolbar({ editor, onSearchToggle, onInsertVaultLink }: ToolbarProps) {
   const setLink = () => {
     const previous = editor.getAttributes('link').href as string | undefined
     const url = window.prompt('URL', previous ?? 'https://')
@@ -189,6 +191,11 @@ export function Toolbar({ editor, onSearchToggle }: ToolbarProps) {
       <ToolbarButton title="Insert link" active={editor.isActive('link')} onClick={setLink}>
         <LinkIcon className="h-4 w-4" />
       </ToolbarButton>
+      {onInsertVaultLink && (
+        <ToolbarButton title="Insert Dev Vault link" onClick={onInsertVaultLink}>
+          <Key className="h-4 w-4" weight="duotone" />
+        </ToolbarButton>
+      )}
 
       <span className="mx-1 h-5 w-px bg-border" aria-hidden />
 

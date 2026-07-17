@@ -1,9 +1,9 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { ReactNodeViewRenderer } from '@tiptap/react'
-import { DevVaultLinkView } from '@/components/editor/DevVaultLinkView'
+import { DevVaultLinkNodeView } from '@/components/editor/DevVaultLinkNodeView'
 import { serializeDevVaultLink } from '@/utils/markdown'
 
-export interface DevVaultLinkAttributes {
+export interface DevVaultLinkAttrs {
   projectId: string
   accountId: string
   label: string
@@ -12,7 +12,7 @@ export interface DevVaultLinkAttributes {
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     devVaultLink: {
-      insertDevVaultLink: (attrs: DevVaultLinkAttributes) => ReturnType
+      insertDevVaultLink: (attrs: DevVaultLinkAttrs) => ReturnType
     }
   }
 }
@@ -26,9 +26,9 @@ export const DevVaultLink = Node.create({
 
   addAttributes() {
     return {
-      projectId: { default: '' },
-      accountId: { default: '' },
-      label: { default: '' },
+      projectId: { default: null },
+      accountId: { default: null },
+      label: { default: 'Vault entry' },
     }
   },
 
@@ -39,9 +39,9 @@ export const DevVaultLink = Node.create({
         getAttrs: (el) => {
           const element = el as HTMLElement
           return {
-            projectId: element.getAttribute('data-project-id') ?? '',
-            accountId: element.getAttribute('data-account-id') ?? '',
-            label: element.getAttribute('data-label') ?? '',
+            projectId: element.getAttribute('data-project-id'),
+            accountId: element.getAttribute('data-account-id'),
+            label: element.getAttribute('data-label') ?? element.textContent ?? 'Vault entry',
           }
         },
       },
@@ -58,12 +58,12 @@ export const DevVaultLink = Node.create({
         'data-label': node.attrs.label,
         class: 'dev-vault-link',
       }),
-      node.attrs.label || node.attrs.accountId || 'Vault',
+      node.attrs.label,
     ]
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(DevVaultLinkView, { as: 'span' })
+    return ReactNodeViewRenderer(DevVaultLinkNodeView)
   },
 
   addCommands() {
@@ -71,10 +71,7 @@ export const DevVaultLink = Node.create({
       insertDevVaultLink:
         (attrs) =>
         ({ commands }) =>
-          commands.insertContent({
-            type: this.name,
-            attrs,
-          }),
+          commands.insertContent({ type: this.name, attrs }),
     }
   },
 
@@ -83,18 +80,16 @@ export const DevVaultLink = Node.create({
       markdown: {
         serialize(
           state: { write: (s: string) => void },
-          node: { attrs: DevVaultLinkAttributes },
+          node: { attrs: Record<string, string> },
         ) {
+          const { projectId, accountId, label } = node.attrs
           state.write(
             serializeDevVaultLink({
-              projectId: node.attrs.projectId,
-              accountId: node.attrs.accountId,
-              label: node.attrs.label,
+              projectId,
+              accountId,
+              label: String(label),
             }),
           )
-        },
-        parse: {
-          // Imported via preprocessMarkdownForEditor HTML fallback.
         },
       },
     }
