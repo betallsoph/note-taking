@@ -235,7 +235,7 @@ export interface PlannerItem {
   id: string
   userId: string
   title: string
-  body: string | null
+  content: Record<string, unknown>
   scope: PlannerScope
   projectName: string | null
   horizon: PlannerHorizon
