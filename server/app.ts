@@ -14,7 +14,7 @@ import {
 } from './db/planner-store.js'
 import { resolvePlannerStoreMode } from './db/planner-config.js'
 import { ensureUser, getDashboardStats, isDatabaseEnabled } from './db/repositories.js'
-import { bootstrapAuthSchema } from './db/bootstrap-schema.js'
+import { bootstrapAuthSchema, clearNeonPlannerIfAtlasPrimary } from './db/bootstrap-schema.js'
 import articlesRouter from './routes/articles.js'
 import categoriesRouter from './routes/categories.js'
 import tagsRouter from './routes/tags.js'
@@ -33,6 +33,7 @@ const app = express()
 
 if (isDatabaseEnabled()) {
   bootstrapAuthSchema()
+    .then(() => clearNeonPlannerIfAtlasPrimary())
     .then(() => ensureUser(MOCK_USER))
     .catch((error) => {
       console.error('Mock user bootstrap failed (non-fatal):', error)

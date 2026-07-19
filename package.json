@@ -17,6 +17,7 @@
     "db:push:ci": "drizzle-kit push --force",
     "db:seed": "tsx server/seed.ts",
     "db:seed:mongo": "tsx server/scripts/seed-mongo-notes.ts",
+    "db:clear-neon-planner": "tsx server/scripts/clear-neon-planner.ts",
     "db:studio": "drizzle-kit studio",
     "mcp": "tsx mcp/nngtkhngoc/src/index.ts",
     "mcp:nngtkhngoc": "tsx mcp/nngtkhngoc/src/index.ts"
