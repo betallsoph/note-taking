@@ -21,4 +21,17 @@ export async function bootstrapAuthSchema(): Promise<void> {
   } catch (error) {
     console.error('Auth schema bootstrap failed (non-fatal):', error)
   }
+
+  try {
+    await db.execute(sql`ALTER TABLE planner_items ADD COLUMN IF NOT EXISTS content jsonb NOT NULL DEFAULT '{}'::jsonb`)
+    await db.execute(sql`
+      UPDATE planner_items
+      SET content = jsonb_build_object('markdown', body)
+      WHERE body IS NOT NULL
+        AND btrim(body) <> ''
+        AND content = '{}'::jsonb
+    `)
+  } catch (error) {
+    console.error('Planner schema bootstrap failed (non-fatal):', error)
+  }
 }
