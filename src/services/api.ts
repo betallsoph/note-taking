@@ -44,6 +44,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json()
 }
 
+type PlannerWriteData = Partial<import('@/types').PlannerItem> & { body?: string | null }
+
+function normalizePlannerWriteData(data: PlannerWriteData): Partial<import('@/types').PlannerItem> {
+  const { body, ...rest } = data
+  if (rest.content !== undefined) return rest
+  if (body !== undefined) {
+    return {
+      ...rest,
+      content: body?.trim() ? { markdown: body.trim() } : { markdown: '' },
+    }
+  }
+  return rest
+}
+
 export const api = {
   auth: {
     me: () => request<import('@/types').User>('/auth/me'),
@@ -188,12 +202,15 @@ export const api = {
       return request<import('@/types').PlannerItem[]>(`/planner${qs}`)
     },
     get: (id: string) => request<import('@/types').PlannerItem>(`/planner/${id}`),
-    create: (data: Partial<import('@/types').PlannerItem>) =>
-      request<import('@/types').PlannerItem>('/planner', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: Partial<import('@/types').PlannerItem>) =>
+    create: (data: PlannerWriteData) =>
+      request<import('@/types').PlannerItem>('/planner', {
+        method: 'POST',
+        body: JSON.stringify(normalizePlannerWriteData(data)),
+      }),
+    update: (id: string, data: PlannerWriteData) =>
       request<import('@/types').PlannerItem>(`/planner/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: JSON.stringify(normalizePlannerWriteData(data)),
       }),
     delete: (id: string) => request<void>(`/planner/${id}`, { method: 'DELETE' }),
   },

@@ -101,7 +101,7 @@ server/
 - Feature-based folder structure for scalability
 - Mock auth middleware injects a demo user; swap for JWT or session auth when needed
 - Routes use Neon/Drizzle when `DATABASE_URL` exists and mock data otherwise
-- Free-form **Notes** use MongoDB Atlas by default when `MONGODB_URI` is set (`NOTES_STORE=atlas`); Neon optional for other data
+- Free-form **Notes** use MongoDB Atlas by default when `MONGODB_URI` is set (`NOTES_STORE=atlas`); **Planner** items follow the same pattern (`PLANNER_STORE=atlas`); Neon optional for other data
 - Dev Vault groups credentials by project and can encrypt secrets with `SECRET_ENCRYPTION_KEY`
 - All user-owned records are scoped by `userId`
 - All DSA visualizations are generated from discrete state transitions
@@ -125,6 +125,7 @@ DATABASE_URL="postgresql://...-pooler...neon.tech/...?...sslmode=require"
 MONGODB_URI="mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
 MONGODB_DB_NAME="cs_hub"
 NOTES_STORE="atlas"
+PLANNER_STORE="atlas"
 SECRET_ENCRYPTION_KEY="replace-with-a-long-random-value"
 APP_ACCESS_TOKEN="replace-with-another-long-random-value"
 NODE_ENV="production"
