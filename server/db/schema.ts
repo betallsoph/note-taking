@@ -311,6 +311,7 @@ export const plannerItems = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     body: text('body'),
+    content: jsonb('content').notNull().default({}),
     scope: text('scope').notNull().default('personal'),
     projectName: text('project_name'),
     horizon: text('horizon').notNull().default('later'),

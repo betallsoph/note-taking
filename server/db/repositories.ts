@@ -269,10 +269,21 @@ function serializeReminder(row: ReminderRow): Reminder {
   }
 }
 
+function plannerContentFromRow(row: PlannerItemRow): Record<string, unknown> {
+  const content = asRecord(row.content)
+  if (Object.keys(content).length > 0) return content
+  if (row.body) return { markdown: row.body }
+  return { markdown: '' }
+}
+
 function serializePlannerItem(row: PlannerItemRow): PlannerItem {
   return {
-    ...row,
+    id: row.id,
+    userId: row.userId,
+    title: row.title,
+    content: plannerContentFromRow(row),
     scope: asPlannerScope(row.scope),
+    projectName: row.projectName,
     horizon: asPlannerHorizon(row.horizon),
     status: asPlannerStatus(row.status),
     targetDate: nullableIso(row.targetDate),
@@ -1707,6 +1718,22 @@ export type PlannerListFilters = {
   search?: string
 }
 
+function normalizePlannerContent(body: Record<string, unknown>): Record<string, unknown> {
+  if (body.content !== undefined) {
+    return body.content && typeof body.content === 'object' && !Array.isArray(body.content)
+      ? (body.content as Record<string, unknown>)
+      : { markdown: '' }
+  }
+  if (typeof body.body === 'string' && body.body.trim()) return { markdown: body.body.trim() }
+  return { markdown: '' }
+}
+
+function plannerSearchText(content: Record<string, unknown>) {
+  if (typeof content.markdown === 'string') return content.markdown.toLowerCase()
+  if (typeof content.body === 'string') return content.body.toLowerCase()
+  return ''
+}
+
 function filterPlannerItems(items: PlannerItem[], filters: PlannerListFilters = {}) {
   const query = filters.search?.toLowerCase()
   const project = filters.project?.toLowerCase()
@@ -1717,11 +1744,7 @@ function filterPlannerItems(items: PlannerItem[], filters: PlannerListFilters = 
       if (filters.horizon && item.horizon !== filters.horizon) return false
       if (filters.scope && item.scope !== filters.scope) return false
       if (project && (item.projectName?.toLowerCase() ?? '') !== project) return false
-      if (
-        query &&
-        !item.title.toLowerCase().includes(query) &&
-        !(item.body?.toLowerCase().includes(query) ?? false)
-      ) {
+      if (query && !item.title.toLowerCase().includes(query) && !plannerSearchText(item.content).includes(query)) {
         return false
       }
       return true
@@ -1762,7 +1785,7 @@ export async function createPlannerItem(userId: string, body: Record<string, unk
     .values({
       userId,
       title,
-      body: optionalString(body.body),
+      content: normalizePlannerContent(body),
       scope,
       projectName: scope === 'project' ? projectName : null,
       horizon: asPlannerHorizon(body.horizon),
@@ -1783,7 +1806,9 @@ export async function updatePlannerItem(
 
   const updates: Partial<typeof schema.plannerItems.$inferInsert> = { updatedAt: new Date() }
   if (typeof body.title === 'string' && body.title.trim()) updates.title = body.title.trim()
-  if ('body' in body) updates.body = optionalString(body.body)
+  if (body.content !== undefined || 'body' in body) {
+    updates.content = normalizePlannerContent(body)
+  }
   if ('scope' in body) updates.scope = asPlannerScope(body.scope)
   if ('horizon' in body) updates.horizon = asPlannerHorizon(body.horizon)
   if ('status' in body) updates.status = asPlannerStatus(body.status)

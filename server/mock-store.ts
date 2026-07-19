@@ -212,7 +212,7 @@ export interface PlannerItem {
   id: string
   userId: string
   title: string
-  body: string | null
+  content: Record<string, unknown>
   scope: PlannerScope
   projectName: string | null
   horizon: PlannerHorizon
@@ -565,7 +565,9 @@ class MockStore {
         id: id(),
         userId: user.id,
         title: 'Build habit tracker app',
-        body: 'Simple Flutter or React Native app — mood + streaks, no backend at first',
+        content: {
+          markdown: 'Simple Flutter or React Native app — mood + streaks, no backend at first',
+        },
         scope: 'personal',
         projectName: null,
         horizon: 'someday',
@@ -578,7 +580,9 @@ class MockStore {
         id: id(),
         userId: user.id,
         title: 'Wire up push notifications',
-        body: 'FCM for Android + APNs stub; tie into reminder service',
+        content: {
+          markdown: 'FCM for Android + APNs stub; tie into reminder service',
+        },
         scope: 'project',
         projectName: 'roomieVerse',
         horizon: 'now',
@@ -591,7 +595,7 @@ class MockStore {
         id: id(),
         userId: user.id,
         title: 'Migrate auth to OAuth2 PKCE',
-        body: null,
+        content: { markdown: '' },
         scope: 'project',
         projectName: 'CS Hub',
         horizon: 'later',

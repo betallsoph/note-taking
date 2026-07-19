@@ -8,6 +8,11 @@ import { databaseMode } from './db/index.js'
 import { mongoMode } from './db/mongo.js'
 import { countNotesAnywhere, warmMongoNotesIndexes, activeNotesStore } from './db/notes-store.js'
 import { resolveNotesStoreMode, usesMongoNotesBackup } from './db/notes-config.js'
+import {
+  activePlannerStore,
+  warmMongoPlannerIndexes,
+} from './db/planner-store.js'
+import { resolvePlannerStoreMode } from './db/planner-config.js'
 import { ensureUser, getDashboardStats, isDatabaseEnabled } from './db/repositories.js'
 import { bootstrapAuthSchema } from './db/bootstrap-schema.js'
 import articlesRouter from './routes/articles.js'
@@ -35,6 +40,7 @@ if (isDatabaseEnabled()) {
 }
 
 warmMongoNotesIndexes()
+warmMongoPlannerIndexes()
 
 app.use(cors())
 app.use(express.json())
@@ -48,6 +54,8 @@ app.get('/api/health', (_req, res) => {
     notesStore: activeNotesStore(),
     notesStoreMode: resolveNotesStoreMode(),
     mongoNotesBackup: usesMongoNotesBackup(),
+    plannerStore: activePlannerStore(),
+    plannerStoreMode: resolvePlannerStoreMode(),
     accessTokenRequired: isAccessTokenRequired(),
     jwtConfigured: hasJwtSecret(),
   })
