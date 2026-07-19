@@ -1,5 +1,27 @@
 import { sql } from 'drizzle-orm'
 import { db } from './index.js'
+import { resolvePlannerStoreMode } from './planner-config.js'
+
+/**
+ * Planner primary store is Atlas — Neon rows are stale leftovers.
+ * Safe to wipe whenever reads/writes go through Mongo.
+ */
+export async function clearNeonPlannerIfAtlasPrimary(): Promise<number> {
+  if (!db) return 0
+  if (resolvePlannerStoreMode() !== 'atlas') return 0
+
+  try {
+    const rows = await db.execute(sql`DELETE FROM planner_items RETURNING id`)
+    const count = Array.isArray(rows) ? rows.length : Number((rows as { count?: number }).count ?? 0)
+    if (count > 0) {
+      console.log(`Cleared ${count} stale planner row(s) from Neon (Atlas is primary)`)
+    }
+    return count
+  } catch (error) {
+    console.error('Neon planner cleanup failed (non-fatal):', error)
+    return 0
+  }
+}
 
 /**
  * Ensures auth columns exist on Neon. Build-time db:push can be skipped when
